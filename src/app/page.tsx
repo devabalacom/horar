@@ -1,42 +1,58 @@
+import { Suspense } from "react";
 import CloudDivider from "@/components/CloudDivider";
-import HoraryForm from "@/components/HoraryForm";
+import HoraryApp from "@/components/HoraryApp";
 import { BOOKS, FAQ, STEPS } from "@/lib/content";
+import { mainSiteUrl } from "@/lib/site";
 
 const BEIGE = "#fbf2e1";
 
 export default function HoraryHome() {
+  const mainSite = mainSiteUrl();
+
   return (
     <>
       <section className="hero">
-        <div className="container hero__inner">
-          <span className="eyebrow">Хорарная астрология</span>
-          <h1>Ответ на ваш вопрос — по карте момента</h1>
+        <div className="container container--narrow hero__inner">
+          <nav className="breadcrumbs" aria-label="Хлебные крошки">
+            <span className="breadcrumbs__item">
+              <a href={mainSite}>Главная</a>
+              <span className="breadcrumbs__sep">/</span>
+            </span>
+            <span className="breadcrumbs__item">Хорарная карта</span>
+          </nav>
+          <h1>Хорарная астрология</h1>
           <p className="hero__lead">
-            Задайте один вопрос, который волнует прямо сейчас. Мы построим карту неба на секунду, когда
-            вы его задали, и прочитаем её по правилам классических книг — с указанием источников.
+            Карта неба на минуту, когда у вас возник вопрос: вернётся ли, получится ли, стоит ли. Традиция
+            отвечает «да», «нет» или «да, но» — и мы показываем, из чего складывается этот ответ.
           </p>
-          <div className="hero__actions">
-            <a href="#ask" className="btn">
-              Задать вопрос
-            </a>
-            <a href="#how" className="btn btn-outline">
-              Как это работает
-            </a>
+
+          <div className="intro">
+            <details className="faq__item" open>
+              <summary>Что такое хорарная астрология?</summary>
+              <div className="intro__body">
+                <p>
+                  Хорар (от лат. <em>hora</em> — «час») — раздел традиционной астрологии, где карта строится не на
+                  момент рождения, а на момент, когда сформировался конкретный вопрос. Минута, в которую мысль
+                  созрела, уже несёт в себе небо, способное ответить.
+                </p>
+                <p>
+                  Методу больше тысячи лет: им пользовались арабские астрологи IX века и Гвидо Бонатти, а в 1647
+                  году Уильям Лилли собрал правила в «Christian Astrology», по которой хорар читают до сих пор.
+                  Хорар не предсказывает будущее «вообще» — он отвечает на один вопрос.
+                </p>
+              </div>
+            </details>
+            <details className="faq__item" id="how">
+              <summary>Как это работает — шесть шагов</summary>
+              <ol className="intro__steps">
+                {STEPS.map((s) => (
+                  <li key={s.title}>
+                    <strong>{s.title}.</strong> {s.text}
+                  </li>
+                ))}
+              </ol>
+            </details>
           </div>
-          <ul className="hero__facts">
-            <li>
-              <strong>Без даты рождения</strong>
-              <span>Нужен только вопрос и момент</span>
-            </li>
-            <li>
-              <strong>5 классических книг</strong>
-              <span>В основе каждого толкования</span>
-            </li>
-            <li>
-              <strong>Ответ с источниками</strong>
-              <span>Ссылки на главы и правила</span>
-            </li>
-          </ul>
         </div>
       </section>
 
@@ -44,43 +60,21 @@ export default function HoraryHome() {
 
       <section id="ask" className="band band--beige">
         <div className="container container--narrow">
-          <div className="section-head">
-            <h2>Задайте вопрос</h2>
-            <p>Сформулируйте его так, как сказали бы астрологу, — коротко и по существу.</p>
-          </div>
-          <HoraryForm />
+          <Suspense>
+            <HoraryApp mainSite={mainSite} />
+          </Suspense>
         </div>
       </section>
 
       <CloudDivider fill={BEIGE} flip />
 
-      <section id="how" className="band">
-        <div className="container">
-          <div className="section-head">
-            <h2>Как это работает</h2>
-            <p>Хорар отвечает не на вопрос «кто я», а на вопрос «что будет с этим делом».</p>
-          </div>
-          <ol className="steps">
-            {STEPS.map((s) => (
-              <li key={s.n} className="step">
-                <span className="step__n">{s.n}</span>
-                <h3 className="step__title">{s.title}</h3>
-                <p>{s.text}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      <CloudDivider fill={BEIGE} />
-
-      <section id="books" className="band band--beige">
+      <section id="books" className="band">
         <div className="container">
           <div className="section-head">
             <h2>Источники</h2>
             <p>
-              Толкования опираются на пять классических книг по хорарной астрологии, переведённых в
-              цифровой формат. Ответ всегда показывает, из какой главы взято правило.
+              Толкования опираются на пять классических книг по хорарной астрологии, переведённых в цифровой
+              формат. Ответ будет показывать, из какой главы взято правило.
             </p>
           </div>
           <ul className="books">
@@ -95,8 +89,6 @@ export default function HoraryHome() {
           </ul>
         </div>
       </section>
-
-      <CloudDivider fill={BEIGE} flip />
 
       <section id="faq" className="band">
         <div className="container container--narrow">
@@ -113,7 +105,7 @@ export default function HoraryHome() {
           </div>
           <div className="faq__cta">
             <a href="#ask" className="btn">
-              Задать свой вопрос
+              Построить хорар
             </a>
           </div>
         </div>

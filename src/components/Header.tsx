@@ -60,7 +60,7 @@ export default function Header({ mainSite }: { mainSite: string }) {
 
         <div className="header-actions">
           <a href="#ask" className="btn">
-            Задать вопрос
+            Построить хорар
           </a>
           <button
             type="button"
