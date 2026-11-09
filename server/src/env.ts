@@ -8,11 +8,19 @@ const schema = z.object({
   PORT: z.coerce.number().int().default(8787),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
   READINGS_PER_HOUR: z.coerce.number().int().positive().default(6),
+  /** Paid (uncached) readings for the whole site per UTC day: a ceiling on the API bill. */
+  READINGS_PER_DAY: z.coerce.number().int().positive().default(150),
   IP_SALT: z.string().default("dev-salt"),
+  /**
+   * Where the visitor's address comes from: "false" — the TCP peer;
+   * "true" — the last X-Forwarded-For entry (our own nginx in front);
+   * "cloudflare" — CF-Connecting-IP (a Cloudflare tunnel in front, which
+   * overwrites that header, so a visitor cannot forge it).
+   */
   TRUST_PROXY: z
     .string()
     .default("false")
-    .transform((v) => v === "true" || v === "1"),
+    .transform((v) => (v === "cloudflare" ? "cloudflare" : v === "true" || v === "1")),
 });
 
 export const env = schema.parse(process.env);

@@ -16,7 +16,9 @@ app.use("/api/*", bodyLimit({ maxSize: 16 * 1024 }));
 
 function ipHash(c: Context): string {
   let ip = "";
-  if (env.TRUST_PROXY) {
+  if (env.TRUST_PROXY === "cloudflare") {
+    ip = c.req.header("cf-connecting-ip") ?? "";
+  } else if (env.TRUST_PROXY) {
     // Our own nginx appends the real address last; earlier entries are client-supplied.
     const xff = c.req.header("x-forwarded-for");
     ip = xff?.split(",").pop()?.trim() || c.req.header("x-real-ip") || "";
@@ -27,8 +29,17 @@ function ipHash(c: Context): string {
 
 /** Sliding one-hour window per visitor; only paid (uncached) readings count. */
 const spent = new Map<string, number[]>();
+let day = "";
+let spentToday = 0;
+
 function allowReading(ip: string): boolean {
   const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  if (today !== day) {
+    day = today;
+    spentToday = 0;
+  }
+  if (spentToday >= env.READINGS_PER_DAY) return false;
   const recent = (spent.get(ip) ?? []).filter((t) => now - t < 3600_000);
   if (recent.length >= env.READINGS_PER_HOUR) {
     spent.set(ip, recent);
@@ -36,6 +47,7 @@ function allowReading(ip: string): boolean {
   }
   recent.push(now);
   spent.set(ip, recent);
+  spentToday++;
   return true;
 }
 setInterval(() => {
