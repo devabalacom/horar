@@ -1,0 +1,9 @@
+[Unit]
+Description=horar: daily backup of readings and votes
+Requires=horar-pg.service
+After=horar-pg.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/horar/server
+ExecStart=/usr/bin/node --env-file=.env scripts/backup.mjs

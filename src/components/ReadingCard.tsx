@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { API_URL, type ChartRequest, type Reading, fetchReading } from "@/lib/api";
+import { API_ENABLED, type ChartRequest, type Reading, fetchReading } from "@/lib/api";
 
 /**
  * «Толкование по книгам»: on request, the API casts the same chart, finds
@@ -13,7 +13,7 @@ export default function ReadingCard({ chart }: { chart: ChartRequest }) {
     { s: "idle" } | { s: "loading" } | { s: "done"; r: Reading } | { s: "error"; msg: string }
   >({ s: "idle" });
 
-  if (!API_URL) {
+  if (!API_ENABLED) {
     return (
       <article className="r-card r-card--pending">
         <h3 className="r-card__title">Толкование по книгам</h3>

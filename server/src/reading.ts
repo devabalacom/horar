@@ -38,20 +38,42 @@ export type Reading = {
 
 export class ReadingRefused extends Error {}
 
+/** A citable unit: one or two sentences of a passage. */
+type Unit = { passage: Passage; text: string };
+
+function units(p: Passage): Unit[] {
+  const sentences = p.text.match(/[^.!?…]+(?:[.!?…]+["»)]?|$)\s*/g) ?? [p.text];
+  const out: Unit[] = [];
+  let buf = "";
+  for (const s of sentences) {
+    buf += s;
+    if (buf.length >= 120) {
+      out.push({ passage: p, text: buf });
+      buf = "";
+    }
+  }
+  if (buf.trim()) out.push({ passage: p, text: buf });
+  if (p.chapter && out.length) out[0] = { ...out[0], text: `[${p.chapter}]\n${out[0].text}` };
+  return out;
+}
+
+/**
+ * One document per book. Its blocks are sentences, not whole passages: a
+ * citation quotes the blocks it spans, so short blocks give short quotes.
+ */
 function documents(passages: Passage[]) {
-  // One document per book; each passage is a block the model can cite.
   const books = new Map<number, Passage[]>();
   for (const p of passages) books.set(p.bookId, [...(books.get(p.bookId) ?? []), p]);
-  const docs = [...books.values()];
+  const docs = [...books.values()].map((ps) => ps.flatMap(units));
   return {
     docs,
-    blocks: docs.map((ps) => ({
+    blocks: docs.map((us) => ({
       type: "document" as const,
-      title: ps[0].author ? `${ps[0].author}. ${ps[0].book}` : ps[0].book,
+      title: us[0].passage.author ? `${us[0].passage.author}. ${us[0].passage.book}` : us[0].passage.book,
       citations: { enabled: true },
       source: {
         type: "content" as const,
-        content: ps.map((p) => ({ type: "text" as const, text: p.chapter ? `[${p.chapter}]\n${p.text}` : p.text })),
+        content: us.map((u) => ({ type: "text" as const, text: u.text })),
       },
     })),
   };
@@ -97,7 +119,7 @@ export async function writeReading(c: Cast): Promise<Reading> {
       if (cit.type !== "content_block_location") continue;
       const doc = docs[cit.document_index];
       if (!doc) continue;
-      const first = doc[cit.start_block_index];
+      const first = doc[cit.start_block_index]?.passage;
       if (!first) continue;
       const k = `${first.id}:${cit.cited_text}`;
       let n = numberOf.get(k);

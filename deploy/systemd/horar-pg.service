@@ -1,0 +1,13 @@
+[Unit]
+Description=horar: PostgreSQL (embedded-postgres, 127.0.0.1:54329)
+
+[Service]
+WorkingDirectory=%h/horar-data/pg
+EnvironmentFile=%h/horar-data/pg/.env
+ExecStart=/usr/bin/node run.mjs
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

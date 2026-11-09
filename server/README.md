@@ -77,6 +77,26 @@ or ALL CAPS lines; check the `--dry-run` output for each book.
 
 ## Production
 
+### Current host: this VPS, http://89.208.97.82:8080
+
+No root and no docker here, and ports 80/443 belong to other services, so
+one Node process (`horar.service`) serves both the static site (`../out`,
+built with `SELF_HOST=true NEXT_PUBLIC_API_URL=/`) and the API on `:8080`.
+Postgres runs as this user from `~/horar-data/pg` (copy of `deploy/pg/`,
+data in `data/`, password in its `.env`). `.env` here sets `HOST=0.0.0.0`,
+`PORT=8080`, `STATIC_DIR=../out`, `TRUST_PROXY=false`, `READINGS_PER_DAY`.
+
+- install as services (once): `bash deploy/install.sh`
+- after a code change: `bash deploy/update.sh`
+- logs: `journalctl --user -u horar -f`
+- backups: `~/horar-data/backups/horar-YYYY-MM-DD.json.gz` (readings and
+  votes, last 14 days; books are re-made with the ingest commands above)
+
+Moving to a domain with TLS: put nginx/Caddy in front, set `HOST=127.0.0.1`,
+`TRUST_PROXY=true`, and turn HSTS/COOP back on in `src/app.ts`.
+
+### Generic
+
 ```bash
 npm ci && npm run build     # → dist/index.js, dist/ingest.js
 node --env-file=.env dist/index.js

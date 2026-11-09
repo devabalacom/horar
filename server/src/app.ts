@@ -1,8 +1,14 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { compress } from "hono/compress";
 import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { cast, chartRequest } from "./chart.js";
 import { pool } from "./db.js";
@@ -11,6 +17,15 @@ import { ReadingRefused, writeReading } from "./reading.js";
 
 export const app = new Hono();
 
+app.use("*", secureHeaders({
+  // Served over plain HTTP on an IP for now: browsers ignore HSTS and COOP there
+  // and log a warning for COOP. Turn both back on once a domain with TLS is in front.
+  strictTransportSecurity: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
+}));
+app.use("*", compress());
+app.use("/api/*", logger());
 app.use("/api/*", cors({ origin: corsOrigins, allowMethods: ["GET", "POST"], maxAge: 86400 }));
 app.use("/api/*", bodyLimit({ maxSize: 16 * 1024 }));
 
@@ -31,6 +46,15 @@ function ipHash(c: Context): string {
 const spent = new Map<string, number[]>();
 let day = "";
 let spentToday = 0;
+
+/** The day's count survives a restart: it is read back from the readings table. */
+export async function loadDailyCount(): Promise<void> {
+  const { rows } = await pool.query<{ n: number }>(
+    "SELECT count(*)::int AS n FROM readings WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'",
+  );
+  day = new Date().toISOString().slice(0, 10);
+  spentToday = rows[0].n;
+}
 
 function allowReading(ip: string): boolean {
   const now = Date.now();
@@ -150,6 +174,29 @@ app.post("/api/feedback", async (c) => {
   );
   return c.json({ ok: true });
 });
+
+/**
+ * The site itself (the static export of the Next app, built with
+ * SELF_HOST=true) when STATIC_DIR is set: one process serves page and API
+ * from the same origin. Hashed assets are cached for good, pages revalidate.
+ */
+if (env.STATIC_DIR) {
+  const root = env.STATIC_DIR;
+  app.use("/_next/static/*", async (c, next) => {
+    await next();
+    if (c.res.status === 200) c.header("Cache-Control", "public, max-age=31536000, immutable");
+  });
+  app.use("*", async (c, next) => {
+    await next();
+    if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-cache");
+  });
+  app.get("*", serveStatic({ root }));
+  app.notFound(async (c) => {
+    if (c.req.path.startsWith("/api/")) return c.json({ error: "not_found" }, 404);
+    const page = await readFile(join(root, "404.html"), "utf8").catch(() => "Not found");
+    return c.html(page, 404);
+  });
+}
 
 app.onError((err, c) => {
   console.error(err);

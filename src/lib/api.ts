@@ -1,10 +1,13 @@
 /**
  * The horar API (server/): readings from the books and Похоже/Мимо votes.
  * NEXT_PUBLIC_API_URL is baked in at build time; without it the page works
- * as before and the reading card says the service is not connected.
+ * as before and the reading card says the service is not connected. "/"
+ * means the API is served from the same origin as the page.
  */
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+export const API_ENABLED = RAW_API_URL !== "";
+export const API_URL = RAW_API_URL.replace(/\/$/, "");
 
 export type ChartRequest = {
   category: string;

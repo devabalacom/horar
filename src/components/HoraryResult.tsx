@@ -3,7 +3,7 @@
 import { useState } from "react";
 import HoraryWheel from "@/components/HoraryWheel";
 import ReadingCard from "@/components/ReadingCard";
-import { API_URL, sendFeedback } from "@/lib/api";
+import { API_ENABLED, sendFeedback } from "@/lib/api";
 import type { Built } from "@/components/HoraryApp";
 import { PLANETS, ROMAN, formatPosition } from "@/lib/astro";
 import { describeState, viaList } from "@/lib/dignities";
@@ -24,7 +24,7 @@ export default function HoraryResult({ built, mainSite }: { built: Built; mainSi
   const castVote = (v: "up" | "down") => {
     setVote(v);
     // A lost vote is not worth bothering the visitor about.
-    if (API_URL) sendFeedback(request, v).catch(() => {});
+    if (API_ENABLED) sendFeedback(request, v).catch(() => {});
   };
 
   const dayMonth = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: chart.tz });

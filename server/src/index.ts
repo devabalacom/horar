@@ -1,11 +1,12 @@
 import { serve } from "@hono/node-server";
-import { app } from "./app.js";
+import { app, loadDailyCount } from "./app.js";
 import { migrate, pool } from "./db.js";
 import { env } from "./env.js";
 
 await migrate();
-const server = serve({ fetch: app.fetch, port: env.PORT, hostname: "127.0.0.1" }, (i) =>
-  console.log(`horar api on http://127.0.0.1:${i.port}`),
+await loadDailyCount();
+const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (i) =>
+  console.log(`horar api on http://${env.HOST}:${i.port}${env.STATIC_DIR ? ` (site from ${env.STATIC_DIR})` : ""}`),
 );
 
 const stop = () => {
