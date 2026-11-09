@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "paths": { "@/*": ["../src/*"] }
+  },
+  "include": ["src/**/*.ts", "../src/lib/astro.ts", "../src/lib/aspects.ts", "../src/lib/dignities.ts", "../src/lib/judgement.ts", "../src/lib/topics.ts"]
+}

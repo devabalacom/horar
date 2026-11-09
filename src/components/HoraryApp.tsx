@@ -5,6 +5,7 @@ import HoraryResult from "@/components/HoraryResult";
 import CityPicker from "@/components/CityPicker";
 import { ROMAN, castChart, localParts, zonedToDate } from "@/lib/astro";
 import { DEFAULT_PLACE, type Place } from "@/lib/geo";
+import type { ChartRequest } from "@/lib/api";
 import { type Judgement, judge } from "@/lib/judgement";
 import { CATEGORIES, HOUSE_MEANINGS, findTopic } from "@/lib/topics";
 
@@ -43,6 +44,8 @@ export type Built = {
   place: Place;
   question: string;
   wall: Moment;
+  /** The inputs of this chart, as the API takes them. */
+  request: ChartRequest;
 };
 
 export default function HoraryApp({ mainSite }: { mainSite: string }) {
@@ -65,7 +68,22 @@ export default function HoraryApp({ mainSite }: { mainSite: string }) {
     const chart = castChart(date, pl.lat, pl.lng, pl.tz);
     const found = findTopic(sel.category, sel.topic);
     const title = found ? found.topic.title : `Вопрос к ${ROMAN[house - 1]} дому`;
-    setBuilt({ judgement: judge(chart, house, found?.topic.natural ?? null), title, place: pl, question: q, wall: m });
+    const request: ChartRequest = {
+      category: sel.category,
+      topic: sel.topic,
+      house,
+      year: +m.year,
+      month: +m.month,
+      day: +m.day,
+      hour: +m.hour,
+      minute: +m.minute,
+      lat: pl.lat,
+      lng: pl.lng,
+      tz: pl.tz,
+      city: pl.label,
+      question: q,
+    };
+    setBuilt({ judgement: judge(chart, house, found?.topic.natural ?? null), title, place: pl, question: q, wall: m, request });
   }
 
   // A shared link opens straight on its chart; a bare visit starts the clock

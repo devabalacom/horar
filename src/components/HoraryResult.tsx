@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import HoraryWheel from "@/components/HoraryWheel";
+import ReadingCard from "@/components/ReadingCard";
+import { API_URL, sendFeedback } from "@/lib/api";
 import type { Built } from "@/components/HoraryApp";
 import { PLANETS, ROMAN, formatPosition } from "@/lib/astro";
 import { describeState, viaList } from "@/lib/dignities";
@@ -16,9 +18,14 @@ const CAPTION: Record<string, string> = {
 };
 
 export default function HoraryResult({ built, mainSite }: { built: Built; mainSite: string }) {
-  const { judgement: j, title, place, question, wall } = built;
+  const { judgement: j, title, place, question, wall, request } = built;
   const { chart } = j;
   const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const castVote = (v: "up" | "down") => {
+    setVote(v);
+    // A lost vote is not worth bothering the visitor about.
+    if (API_URL) sendFeedback(request, v).catch(() => {});
+  };
 
   const dayMonth = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: chart.tz });
   const hours = (d: Date) => (d.getTime() - chart.date.getTime()) / 3600_000;
@@ -60,10 +67,10 @@ export default function HoraryResult({ built, mainSite }: { built: Built; mainSi
             <>
               <p>Похоже на правду?</p>
               <div className="vote__buttons">
-                <button type="button" className="btn btn-sm btn-outline" onClick={() => setVote("up")}>
+                <button type="button" className="btn btn-sm btn-outline" onClick={() => castVote("up")}>
                   Похоже
                 </button>
-                <button type="button" className="btn btn-sm btn-outline" onClick={() => setVote("down")}>
+                <button type="button" className="btn btn-sm btn-outline" onClick={() => castVote("down")}>
                   Мимо
                 </button>
               </div>
@@ -73,13 +80,7 @@ export default function HoraryResult({ built, mainSite }: { built: Built; mainSi
       </article>
 
       {/* ---------- reading from the books ---------- */}
-      <article className="r-card r-card--pending">
-        <h3 className="r-card__title">Толкование по книгам</h3>
-        <p className="r-card__lead">
-          Развёрнутый ответ на ваш вопрос: что показывает карта, когда ждать развязки и цитаты из глав
-          классических книг, на которые опирается вывод. Подключаем на следующем этапе.
-        </p>
-      </article>
+      <ReadingCard key={JSON.stringify(request)} chart={request} />
 
       {/* ---------- wheel ---------- */}
       <article className="r-card">
