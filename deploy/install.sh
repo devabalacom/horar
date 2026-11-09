@@ -2,8 +2,12 @@
 # Installs horar as systemd --user services on this VPS (no root needed):
 # Postgres, the site+API on :8080, and a daily backup. Run it yourself:
 #   bash ~/horar/deploy/install.sh
-# Stop any copies started by hand first (they hold ports 54329 and 8080).
 set -euo pipefail
+# Copies started by hand (e.g. from a Claude session) hold ports 8080 and
+# 54329; stop them so the services can bind.
+pkill -f "node --env-file=.env dist/[i]ndex.js" || true
+pkill -TERM -f "node [r]un.mjs" || true
+for i in $(seq 20); do ss -ltn | grep -qE ":(8080|54329) " || break; sleep 1; done
 here="$(cd "$(dirname "$0")" && pwd)"
 dest="$HOME/.config/systemd/user"
 mkdir -p "$dest"
