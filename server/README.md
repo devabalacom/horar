@@ -49,10 +49,26 @@ reading card shows the "coming soon" text.
 
 ## Load the books
 
+The five books live in `../books/` (gitignored, the files the owner sent).
+They are Vedic Prashna texts while the chart is cast the Western way, so
+each book is tagged with the question areas it speaks to (`--topics`:
+`general`, `work`, `money`, `health`, `love`, `move`) and a reading searches
+the books of its area plus the `general` ones. Searching the chart's
+Western terms (peregrine, hour ruler…) found nothing in them.
+
 ```bash
-npm run ingest -- "/path/Lilly.docx" --title "Христианская астрология" --author "Уильям Лилли" --slug lilly
+T="Практикум по индийской астрологии вопроса"
+npm run ingest -- ../books/1.docx --slug tolmachev-1 --topics general      --author "Олег Толмачёв" --title "$T. Выпуск 1. Первые шаги"
+npm run ingest -- ../books/2.docx --slug tolmachev-2 --topics money,work   --author "Олег Толмачёв" --title "$T. Выпуск 2. Бизнес"
+npm run ingest -- ../books/3.docx --slug tolmachev-3 --topics work         --author "Олег Толмачёв" --title "$T. Выпуск 3. Работа и карьера"
+npm run ingest -- ../books/4.docx --slug tolmachev-4 --topics health       --author "Олег Толмачёв" --title "$T. Выпуск 4. Здоровье"
+npm run ingest -- ../books/5.docx --slug agarwal-3   --topics work         --author "Г. С. Агарвал"  --title "Ведическая астрология. Том 3. Профессия, периоды, техники предсказания"
+
 npm run ingest -- book.pdf --title "…" --dry-run   # show how it splits, write nothing
 ```
+
+Chart tables printed in the books ("As: 26Aq28 Su: 10 Cp 35-GK…") and
+chart-wheel labels spilled by OCR are dropped at ingest.
 
 `.txt` (UTF-8 or cp1251), `.md`, `.docx`, `.pdf` (with a text layer — a
 scanned PDF needs OCR first), `.fb2`. Running again with the same `--slug`

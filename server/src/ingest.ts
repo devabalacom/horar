@@ -1,12 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { parseArgs } from "node:util";
+import { AREAS } from "./chart.js";
 import { chunk } from "./chunk.js";
 import { migrate, pool } from "./db.js";
 
 /**
  * Loads a book into the search index:
- *   npm run ingest -- book.docx --title "Христианская астрология" --author "Уильям Лилли"
+ *   npm run ingest -- book.docx --title "Христианская астрология" --author "Уильям Лилли" --topics work,money
+ * --topics lists the question areas the book speaks to (see AREAS in chart.ts);
+ * "general" marks a book that is searched for every question.
  * Supported: .txt .md .docx .pdf .fb2. Running again with the same slug
  * replaces the book's passages.
  */
@@ -16,6 +19,7 @@ const { values, positionals } = parseArgs({
   options: {
     title: { type: "string" },
     author: { type: "string", default: "" },
+    topics: { type: "string", default: "general" },
     slug: { type: "string" },
     "dry-run": { type: "boolean", default: false },
   },
@@ -23,7 +27,14 @@ const { values, positionals } = parseArgs({
 
 const file = positionals[0];
 if (!file || !values.title) {
-  console.error('usage: npm run ingest -- <file> --title "Название" [--author "Автор"] [--slug slug] [--dry-run]');
+  console.error('usage: npm run ingest -- <file> --title "Название" [--author "Автор"] [--topics work,money] [--slug slug] [--dry-run]');
+  process.exit(2);
+}
+
+const topics = values.topics.split(",").map((t) => t.trim()).filter(Boolean);
+const unknown = topics.filter((t) => !(AREAS as readonly string[]).includes(t));
+if (unknown.length) {
+  console.error(`unknown --topics ${unknown.join(", ")}; known: ${AREAS.join(", ")}`);
   process.exit(2);
 }
 
@@ -89,10 +100,10 @@ const client = await pool.connect();
 try {
   await client.query("BEGIN");
   const { rows } = await client.query<{ id: number }>(
-    `INSERT INTO books (slug, title, author) VALUES ($1, $2, $3)
-     ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, author = EXCLUDED.author
+    `INSERT INTO books (slug, title, author, topics) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, author = EXCLUDED.author, topics = EXCLUDED.topics
      RETURNING id`,
-    [slug, values.title, values.author],
+    [slug, values.title, values.author, topics],
   );
   const bookId = rows[0].id;
   await client.query("DELETE FROM chunks WHERE book_id = $1", [bookId]);
@@ -105,7 +116,7 @@ try {
     );
   }
   await client.query("COMMIT");
-  console.log(`book "${values.title}" (${slug}) saved: ${chunks.length} passages`);
+  console.log(`book "${values.title}" (${slug}) [${topics.join(",")}] saved: ${chunks.length} passages`);
 } catch (e) {
   await client.query("ROLLBACK");
   throw e;

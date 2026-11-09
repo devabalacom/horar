@@ -41,9 +41,25 @@ export const chartRequest = z
 
 export type ChartRequest = z.infer<typeof chartRequest>;
 
+/**
+ * Question areas. Books are tagged with them at ingest; a reading searches
+ * the books of its area plus the "general" ones.
+ */
+export const AREAS = ["general", "work", "money", "health", "love", "move"] as const;
+export type Area = (typeof AREAS)[number];
+
+const CATEGORY_AREA: Record<string, Area> = { work: "work", money: "money", love: "love", move: "move" };
+
+/** For a custom question the house decides the area. */
+const HOUSE_AREA: Record<number, Area> = {
+  1: "general", 2: "money", 3: "move", 4: "move", 5: "love", 6: "health",
+  7: "love", 8: "money", 9: "move", 10: "work", 11: "general", 12: "health",
+};
+
 export type Cast = {
   req: ChartRequest;
   key: string;
+  area: Area;
   judgement: Judgement;
   title: string;
   topicText: string;
@@ -74,6 +90,7 @@ export function cast(req: ChartRequest): Cast {
   return {
     req: { ...req, house, question },
     key,
+    area: (found && CATEGORY_AREA[found.category.id]) || HOUSE_AREA[house],
     judgement,
     title: found ? found.topic.title : `Вопрос к ${ROMAN[house - 1]} дому`,
     topicText: found ? found.topic.text : HOUSE_MEANINGS[house],
@@ -169,33 +186,29 @@ export function dossier(c: Cast): string {
   return lines.join("\n");
 }
 
+/** Words of a free text, for an any-of-these-words search. */
+function anyWord(text: string): string | null {
+  const words = text.toLowerCase().match(/[а-яё]{4,}/g) ?? [];
+  return words.length ? [...new Set(words)].slice(0, 12).join(" or ") : null;
+}
+
 /**
- * Search facets for the books: one short query per thing an astrologer
- * would look up in the index of a treatise for this chart.
+ * Search facets for the books. The books are Vedic Prashna practicums while
+ * the chart is cast the Western way, so the chart's technical terms
+ * (peregrine, hour ruler, reception) are not looked up: the books do not use
+ * them. The search is about the matter asked — the topic, its house, the
+ * asker's own words — and the planets that signify it.
  */
 export function facets(c: Cast): string[] {
   const { judgement: j } = c;
   const out = new Set<string>();
   out.add(c.title);
-  out.add(`${HOUSE_MEANINGS[j.house].split(",")[0]} дом`);
-  if (c.req.question) out.add(c.req.question);
-  for (const k of j.considerations) out.add(k.title);
-  for (const s of j.significators) {
-    const st = s.row.state;
-    out.add(`${name(s.planet)} сигнификатор`);
-    if (st.detriment) out.add(`${name(s.planet)} в изгнании`);
-    if (st.fall) out.add(`${name(s.planet)} в падении`);
-    if (st.peregrine) out.add("перегрин");
-    for (const x of s.row.statuses) out.add(x === "R" ? "ретроградная планета" : x);
+  for (const t of [c.topicText, HOUSE_MEANINGS[j.house], c.req.question]) {
+    const q = t && anyWord(t);
+    if (q) out.add(q);
   }
-  if (j.reception && j.reception.strength !== "none") out.add("рецепция взаимный приём");
-  if (j.main) {
-    const asp = j.main.now?.aspect.name ?? j.main.course.perfection?.aspect.name;
-    if (asp) out.add(`${asp} сигнификаторов`);
-    if (j.main.course.refranation) out.add("рефранация");
-    if (j.main.timing) out.add("время события сроки");
-  }
-  if (!j.moonNext) out.add("Луна без курса");
-  else out.add(`Луна ${j.moonNext.aspect.name}`);
-  return [...out].map((s) => s.slice(0, 200));
+  for (const s of j.significators) out.add(name(s.planet));
+  if (j.natural) out.add(name(j.natural));
+  if (j.main?.timing) out.add("сроки or время or когда");
+  return [...out].map((s) => s.slice(0, 300));
 }

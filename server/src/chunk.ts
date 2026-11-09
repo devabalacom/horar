@@ -28,6 +28,20 @@ export function paragraphs(text: string): string[] {
   return blocks.map((b) => b.replace(/\s*\n\s*/g, " ").trim()).filter((b) => b.length > 0);
 }
 
+/**
+ * Chart data printed in a book ("As: 26Aq28 Su: 10 Cp 35-GK ...") and the
+ * labels of a chart wheel that OCR spills as paragraphs ("Gk", "Rasi", "Md")
+ * are a table, not a rule: nothing to search for or quote, so they are left
+ * out. Only Latin-script scraps go: a Russian book's prose never looks so.
+ */
+export function isChartData(p: string): boolean {
+  const letters = (p.match(/\p{L}/gu) ?? []).length;
+  const cyr = (p.match(/[А-Яа-яЁё]/g) ?? []).length;
+  const digits = (p.match(/\d/g) ?? []).length;
+  if (letters > 0 && cyr / letters >= 0.5) return false;
+  return p.length < 40 || digits / p.length > 0.1;
+}
+
 export type Chunk = { chapter: string; text: string };
 
 export function chunk(text: string): Chunk[] {
@@ -43,6 +57,7 @@ export function chunk(text: string): Chunk[] {
   };
 
   for (const p of paragraphs(text)) {
+    if (isChartData(p)) continue;
     if (isHeading(p)) {
       flush();
       chapter = p;

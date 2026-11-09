@@ -66,6 +66,14 @@ const MIGRATIONS: { id: number; sql: string }[] = [
       );
     `,
   },
+  {
+    id: 2,
+    sql: `
+      -- Which question areas a book speaks to (work, money, health, love, move,
+      -- general). Retrieval searches the books of the question's area first.
+      ALTER TABLE books ADD COLUMN topics text[] NOT NULL DEFAULT '{}';
+    `,
+  },
 ];
 
 export async function migrate(): Promise<void> {
