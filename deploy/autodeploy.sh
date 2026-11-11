@@ -28,7 +28,7 @@ fi
 
 # Wait for CI on that commit (public repo: no token needed).
 runs=$(curl -fsS -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/$REPO/actions/runs?head_sha=$remote_sha&event=push&per_page=20" || true)
+  "https://api.github.com/repos/$REPO/actions/runs?head_sha=$remote_sha&event=push&branch=main&per_page=20" || true)
 state=$(printf '%s' "$runs" | node -e '
   let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
     let runs = [];
