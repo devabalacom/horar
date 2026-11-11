@@ -10,8 +10,21 @@ import {
   norm,
   signIndex,
 } from "@/lib/astro";
-import { type AspectDef, type Course, type CurrentAspect, type MoonNext, aspectGrid, course, currentAspect, moonNextAspect } from "@/lib/aspects";
-import { type PlanetState, type Reception, planetState, reception, rulersAt } from "@/lib/dignities";
+import {
+  ORB,
+  type AspectDef,
+  type Antiscion,
+  type Course,
+  type CurrentAspect,
+  type MoonNext,
+  antiscionContact,
+  aspectGrid,
+  course,
+  currentAspect,
+  lastContact,
+  moonNextAspect,
+} from "@/lib/aspects";
+import { TRIPLICITY, type PlanetState, type Reception, planetState, reception } from "@/lib/dignities";
 
 /**
  * The automatic reading of a horary chart, done the way a traditional
@@ -40,6 +53,18 @@ export type Significator = {
   row: PlanetRow;
 };
 
+/** A third planet that joins the significators when they do not meet. */
+export type Helper = {
+  kind: "translation" | "collection";
+  planet: PlanetId;
+  /** Translation: the significator it separates from, then the one it applies to. */
+  from: PlanetId;
+  to: PlanetId;
+  aspect: AspectDef;
+  /** The helper stands in the dignities of both significators. */
+  received: boolean;
+};
+
 export type Verdict = { tone: "yes" | "hard" | "no" | "open"; title: string; text: string };
 
 export type Judgement = {
@@ -54,6 +79,8 @@ export type Judgement = {
   reception: (Reception & { a: PlanetId; b: PlanetId }) | null;
   main: { now: CurrentAspect | null; course: Course; timing: string | null; a: PlanetId; b: PlanetId } | null;
   moonNext: MoonNext;
+  helpers: Helper[];
+  antiscia: (Antiscion & { a: PlanetId; b: PlanetId }) | null;
   planets: PlanetRow[];
   grid: { a: PlanetId; b: PlanetId; aspect: AspectDef }[];
 };
@@ -69,6 +96,12 @@ function statusesOf(id: PlanetId, lon: number, speed: number, sunLon: number): s
   }
   return out;
 }
+
+/** Lilly's temperaments of the planets. */
+const NATURE: Record<PlanetId, string> = {
+  sun: "горячие и сухие", mars: "горячие и сухие", jupiter: "горячие и влажные", saturn: "холодные и сухие",
+  mercury: "холодные и сухие", venus: "холодные и влажные", moon: "холодные и влажные",
+};
 
 const plural = (n: number, forms: [string, string, string]) => {
   const m10 = n % 10;
@@ -159,11 +192,20 @@ export function judge(chart: Chart, house: number, natural: PlanetId | null): Ju
   }
 
   if (chart.hourRuler) {
-    const ascRulers = rulersAt(chart.asc, chart.isDay);
-    const agrees = chart.hourRuler === querent || chart.hourRuler === ascRulers.triplicity;
+    // Lilly (CA p. 121): the lord of the hour and the lord of the ascendant
+    // are the same planet, of the same triplicity, or of the same nature.
+    const h = chart.hourRuler;
+    const why =
+      h === querent
+        ? "он же управляет асцендентом"
+        : TRIPLICITY[signIndex(chart.asc) % 4].includes(h)
+          ? "он управляет триплицитностью асцендента"
+          : NATURE[h] === NATURE[querent]
+            ? `он одной природы с управителем I дома (${NAMES[querent]}): оба ${NATURE[h]}`
+            : null;
     considerations.push(
-      agrees
-        ? { level: "ok", title: "Управитель часа согласуется с асцендентом", text: `Управитель часа — ${NAMES[chart.hourRuler]}, он управляет асцендентом или его триплицитностью: карта отражает вопрос.` }
+      why
+        ? { level: "ok", title: "Тест управителя часа пройден", text: `Управитель часа — ${NAMES[h]}, ${why}. По Лилли карта радикальна: она отражает вопрос.` }
         : { level: "warn", title: "Тест управителя часа не пройден", text: `Управитель часа — ${NAMES[chart.hourRuler]}, управитель I дома — ${NAMES[querent]}. По строгому правилу Лилли вопрос задан не вовремя или сформулирован неточно — не запрет, но повод проверить формулировку.` },
     );
   }
@@ -175,9 +217,67 @@ export function judge(chart: Chart, house: number, natural: PlanetId | null): Ju
   if (q.statuses.includes("сожжён")) {
     considerations.push({ level: "bad", title: "Сигнификатор кверента сожжён", text: `${NAMES[querent]} слишком близко к Солнцу: спрашивающий не видит ситуацию целиком или бессилен в ней.` });
   }
+  const qd = row(quesited);
+  if (quesited !== querent) {
+    if (qd.state.peregrine) {
+      considerations.push({ level: "warn", title: "Сигнификатор квезита — перегрин", text: `${NAMES[quesited]} без эссенциальных достоинств: то, о чём спрашивают, слабо и неустойчиво.` });
+    }
+    if (qd.statuses.includes("R")) {
+      considerations.push({ level: "warn", title: "Сигнификатор квезита ретрограден", text: `${NAMES[quesited]} идёт назад: откат, сомнения, возврат к прошлому — сторона может передумать.` });
+    }
+    if (qd.statuses.includes("сожжён")) {
+      considerations.push({ level: "bad", title: "Сигнификатор квезита сожжён", text: `${NAMES[quesited]} слишком близко к Солнцу: предмет вопроса ослаблен или скрыт.` });
+    }
+  }
   const radical = considerations.every((c) => c.level === "ok");
 
   /* ---------- reception and the main aspect ---------- */
+
+  /* ---------- helpers: translation and collection of light ---------- */
+
+  const helpers: Helper[] = [];
+  let antiscia: Judgement["antiscia"] = null;
+  if (querent !== quesited) {
+    const A = pos(querent);
+    const B = pos(quesited);
+    const inDignitiesOfBoth = (id: PlanetId) => {
+      const by = row(id).state.receivedBy.map((r) => r.planet);
+      return by.includes(querent) && by.includes(quesited);
+    };
+    for (const p of chart.planets) {
+      if (p.id === querent || p.id === quesited) continue;
+      // Translation: a lighter planet separates from one significator and
+      // applies to the other, carrying the light between them.
+      if (Math.abs(p.speed) > Math.abs(A.speed) && Math.abs(p.speed) > Math.abs(B.speed)) {
+        // Which significator it touched last; a passing aspect to a third
+        // planet in between does not cancel the translation (as on the reference).
+        const last = lastContact(p.id, chart.date, [querent, quesited]);
+        for (const [from, to] of [[querent, quesited], [quesited, querent]] as const) {
+          if (last?.planet !== from) continue;
+          const still = Math.abs(delta(pos(from).lon, p.lon));
+          const sep = Math.min(...[0, 60, 90, 120, 180].map((a) => Math.abs(still - a)));
+          if (sep > ORB[p.id]) continue;
+          const next = course(p.id, to, chart.date, NAMES);
+          if (next.perfection && !next.refranation) {
+            helpers.push({ kind: "translation", planet: p.id, from, to, aspect: next.perfection.aspect, received: inDignitiesOfBoth(p.id) });
+          }
+        }
+      }
+      // Collection: both significators apply to a heavier planet, and — Lilly
+      // insists — it receives them both.
+      const receivesBoth = row(querent).state.receivedBy.some((r) => r.planet === p.id) &&
+        row(quesited).state.receivedBy.some((r) => r.planet === p.id);
+      if (receivesBoth && Math.abs(p.speed) < Math.abs(A.speed) && Math.abs(p.speed) < Math.abs(B.speed)) {
+        const ca = course(querent, p.id, chart.date, NAMES);
+        const cb = course(quesited, p.id, chart.date, NAMES);
+        if (ca.perfection && !ca.refranation && cb.perfection && !cb.refranation) {
+          helpers.push({ kind: "collection", planet: p.id, from: querent, to: quesited, aspect: ca.perfection.aspect, received: true });
+        }
+      }
+    }
+    const an = antiscionContact(A.lon, B.lon);
+    if (an) antiscia = { ...an, a: querent, b: quesited };
+  }
 
   let rec: Judgement["reception"] = null;
   let main: Judgement["main"] = null;
@@ -204,7 +304,19 @@ export function judge(chart: Chart, house: number, natural: PlanetId | null): Ju
     main = { now, course: c, timing: time, a: querent, b: quesited };
 
     const pair = `${NAMES[querent]} и ${NAMES[quesited]}`;
-    if (c.refranation) {
+    // Partile: both in the same degree of their signs — the aspect is
+    // exact now, which Lilly reads as done rather than past.
+    const partile = !!now && Math.floor(degInSign(q.lon)) === Math.floor(degInSign(row(quesited).lon));
+    if (partile && now) {
+      const { aspect } = now;
+      const strongReception = r.strength === "strong";
+      verdict =
+        aspect.tone === "good"
+          ? { tone: "yes", title: "Скорее «да»", text: `${pair} стоят в точном (партильном) аспекте «${aspect.name}»: стороны уже сошлись, дело складывается без больших трений.` }
+          : aspect.tone === "hard"
+            ? { tone: strongReception ? "yes" : "hard", title: "«Да», но через трудности", text: `${pair} в точном квадрате: результат есть, но с препятствиями${strongReception ? "; сильный взаимный приём смягчает аспект" : ""}.` }
+            : { tone: strongReception ? "hard" : "no", title: "Скорее «нет» — или с сожалением", text: `${pair} в точной оппозиции: стороны встретились, но в противостоянии.` };
+    } else if (c.refranation) {
       verdict = {
         tone: "no",
         title: "Скорее «нет» — дело срывается",
@@ -228,16 +340,34 @@ export function judge(chart: Chart, house: number, natural: PlanetId | null): Ju
           text: `${pair} сходятся в оппозиции: стороны встречаются, но в противостоянии, и итог редко радует.`,
         };
       }
+    } else if (helpers.length) {
+      const h = helpers.find((x) => x.received) ?? helpers[0];
+      verdict =
+        h.kind === "translation"
+          ? {
+              tone: "yes",
+              title: "«Да», через посредника",
+              text: `${pair} не сходятся напрямую, но ${NAMES[h.planet]} переносит свет от планеты ${PLANETS[h.from].gen} к планете ${PLANETS[h.to].gen}: дело может сложиться через третье лицо.${h.received ? " Посредник стоит в достоинствах обеих сторон — по Лилли это доводит дело надёжно." : ""}`,
+            }
+          : {
+              tone: "yes",
+              title: "«Да», через третью сторону",
+              text: `${pair} не сходятся напрямую, но оба приходят к аспекту с планетой ${PLANETS[h.planet].gen}, и она принимает обоих: она собирает их свет, и дело решается через кого-то более весомого.`,
+            };
     } else if (now && !now.applying) {
       verdict = { tone: "no", title: "Момент, похоже, прошёл", text: `${pair} в аспекте «${now.aspect.name}», но он уже расходится: главное событие позади.` };
     } else {
       verdict = {
         tone: "no",
         title: "Скорее «нет» — сигнификаторы не сходятся",
-        text: `${pair} не приходят к точному аспекту, пока остаются в своих знаках. Исключение — перевод или собирание света другой планетой; их учтёт полный разбор.`,
+        text: `${pair} не приходят к точному аспекту, пока остаются в своих знаках. Посредника, который перенёс или собрал бы их свет, в карте нет.`,
       };
     }
   }
+
+  // Helpers matter only when the significators do not meet on their own.
+  const direct = !!main && (!!main.course.perfection || main.course.refranation || (!!main.now && Math.floor(degInSign(row(main.a).lon)) === Math.floor(degInSign(row(main.b).lon))));
+  if (direct) helpers.length = 0;
 
   return {
     chart,
@@ -251,6 +381,8 @@ export function judge(chart: Chart, house: number, natural: PlanetId | null): Ju
     reception: rec,
     main,
     moonNext,
+    helpers,
+    antiscia,
     planets,
     grid: aspectGrid(chart.date),
   };

@@ -17,6 +17,8 @@ const SYSTEM = `Ты — астролог классической хорарн�
 
 Главное: вывод и толкование строятся по книгам. Сначала найди в отрывках, что книги говорят о таком вопросе (о доме и теме, о сигнификаторах, о Луне, о благоприятных и неблагоприятных планетах в доме вопроса, о сходящемся аспекте управителей — в Таджике это итхасала, ишрафа — расходящийся), и только потом приложи это к фактам карты. Принципы, общие для обеих традиций (управитель I дома и управитель дома вопроса сходятся аспектом — да; расходятся или разделены — нет; Луна как сопутствующий показатель; благотворные и вредители в доме вопроса; натуральный показатель темы), применяй к карте прямо, со ссылкой на книгу. Автоматический вердикт программы — подсказка, а не решение: если книги ведут к другому выводу, следуй книгам и коротко объясни почему.
 
+Работай быстро: все расчёты карты уже сделаны и даны как факты, не перепроверяй их и не рассуждай долго перед ответом — человек ждёт на странице. Сразу начинай ответ со строки ВЕРДИКТ.
+
 Формат ответа — строго четыре части с метками в начале строки, без других заголовков:
 ВЕРДИКТ: одно из — да | скорее да | с оговоркой | скорее нет | нет | неясно
 ЗАГОЛОВОК: формула ответа в 3–8 словах, без кавычек (например: Скорее нет — управители не сходятся)
@@ -92,43 +94,23 @@ function documents(passages: Passage[]) {
   };
 }
 
-export async function writeReading(c: Cast): Promise<Reading> {
-  const passages = await retrieve(facets(c), c.area);
-  const { docs, blocks } = documents(passages);
+type Docs = ReturnType<typeof documents>["docs"];
+type Block = { type: string; text?: string; citations?: unknown[] | null };
 
-  const intro = passages.length
-    ? "Отрывки из книг приложены выше."
-    : "Отрывков из книг для этой карты не нашлось.";
-
-  const stream = client.beta.messages.stream({
-    model: env.CLAUDE_MODEL,
-    max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    thinking: { type: "adaptive" },
-    output_config: { effort: env.CLAUDE_EFFORT },
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: [
-          ...blocks,
-          { type: "text", text: `${intro}\n\n## Карта\n\n${dossier(c)}\n\nНапиши толкование этой карты.` },
-        ],
-      },
-    ],
-  });
-  const msg = await stream.finalMessage();
-  if (msg.stop_reason === "refusal") throw new ReadingRefused(msg.stop_details?.category ?? "refusal");
-
-  // Number sources in order of first citation; the same passage keeps its number.
+/**
+ * Turns the model's content blocks into text segments with numbered
+ * sources. Sources are numbered in order of first citation, so a partial
+ * message numbers them the same way the finished one will.
+ */
+function assemble(content: Block[], docs: Docs): { segments: Segment[]; sources: Source[] } {
   const sources: Source[] = [];
   const numberOf = new Map<string, number>();
   const segments: Segment[] = [];
-  for (const block of msg.content) {
+  for (const block of content) {
     if (block.type !== "text") continue;
     const refs: number[] = [];
-    for (const cit of block.citations ?? []) {
+    for (const raw of block.citations ?? []) {
+      const cit = raw as { type: string; document_index: number; start_block_index: number; cited_text: string };
       if (cit.type !== "content_block_location") continue;
       const doc = docs[cit.document_index];
       if (!doc) continue;
@@ -143,11 +125,85 @@ export async function writeReading(c: Cast): Promise<Reading> {
       }
       if (!refs.includes(n)) refs.push(n);
     }
-    segments.push({ text: block.text, sources: refs });
+    segments.push({ text: block.text ?? "", sources: refs });
   }
+  return { segments, sources };
+}
 
+/** What the page can show before the detailed reading is written. */
+export type ShortAnswer = Pick<Reading, "verdict" | "summary"> & { sources: Source[] };
+
+/**
+ * Writes the reading. `onPartial` fires once, as soon as the verdict and the
+ * short answer are complete — the page shows them while the detailed
+ * reading is still being written.
+ */
+export async function writeReading(c: Cast, onPartial?: (p: ShortAnswer) => void): Promise<Reading> {
+  const t0 = Date.now();
+  const passages = await retrieve(facets(c), c.area);
+  const tRetrieved = Date.now();
+  const { docs, blocks } = documents(passages);
+
+  const intro = passages.length
+    ? "Отрывки из книг приложены выше."
+    : "Отрывков из книг для этой карты не нашлось.";
+
+  const open = (speed: "standard" | "fast") => client.beta.messages.stream({
+    model: env.CLAUDE_MODEL,
+    max_tokens: 16000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    thinking: { type: env.CLAUDE_THINKING },
+    output_config: { effort: env.CLAUDE_EFFORT },
+    ...(speed === "fast" ? { speed: "fast" as const } : {}),
+    system: SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...blocks,
+          { type: "text", text: `${intro}\n\n## Карта\n\n${dossier(c)}\n\nНапиши толкование этой карты.` },
+        ],
+      },
+    ],
+  });
+
+  let tFirstText = 0;
+  let tPartial = 0;
+  const listen = (stream: ReturnType<typeof open>) => stream.on("streamEvent", (event, snapshot) => {
+    if (event.type !== "content_block_delta" || event.delta.type !== "text_delta") return;
+    if (!tFirstText) tFirstText = Date.now();
+    if (tPartial || !onPartial) return;
+    const { segments, sources } = assemble(snapshot.content as Block[], docs);
+    const parts = splitSections(segments);
+    if (parts.verdict && parts.summary.length) {
+      tPartial = Date.now();
+      onPartial({ verdict: parts.verdict, summary: parts.summary, sources });
+    }
+  });
+
+  let speed = env.CLAUDE_SPEED;
+  let msg;
+  try {
+    msg = await listen(open(speed)).finalMessage();
+  } catch (e) {
+    // Fast mode has its own rate limit: fall back to standard speed if it
+    // is hit before anything was written.
+    if (speed !== "fast" || tFirstText || !(e instanceof Anthropic.RateLimitError)) throw e;
+    console.warn("reading: fast mode rate-limited, retrying at standard speed");
+    speed = "standard";
+    msg = await listen(open(speed)).finalMessage();
+  }
+  if (msg.stop_reason === "refusal") throw new ReadingRefused(msg.stop_details?.category ?? "refusal");
+
+  const { segments, sources } = assemble(msg.content as Block[], docs);
   if (!segments.some((s) => s.text.trim())) throw new Error(`empty reading (stop_reason=${msg.stop_reason})`);
   const parts = splitSections(segments);
+  const ms = (t: number) => (t ? `${((t - t0) / 1000).toFixed(1)}s` : "—");
+  console.log(
+    `reading: retrieve ${ms(tRetrieved)}, first text ${ms(tFirstText)}, short answer ${ms(tPartial)}, done ${ms(Date.now())}; ` +
+      `${passages.length} passages, out ${msg.usage.output_tokens} tok, ${msg.model}${speed === "fast" ? " fast" : ""}`,
+  );
 
   return {
     ...parts,

@@ -8,12 +8,13 @@ import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { streamSSE } from "hono/streaming";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { cast, chartRequest } from "./chart.js";
 import { pool } from "./db.js";
 import { corsOrigins, env } from "./env.js";
-import { ReadingRefused, writeReading } from "./reading.js";
+import { type ShortAnswer, ReadingRefused, writeReading } from "./reading.js";
 
 export const app = new Hono();
 
@@ -24,7 +25,9 @@ app.use("*", secureHeaders({
   crossOriginOpenerPolicy: false,
   crossOriginResourcePolicy: false,
 }));
-app.use("*", compress());
+// Event streams are left uncompressed: gzip would hold the events back.
+const gzip = compress();
+app.use("*", (c, next) => (c.req.path === "/api/reading/stream" ? next() : gzip(c, next)));
 app.use("/api/*", logger());
 app.use("/api/*", cors({ origin: corsOrigins, allowMethods: ["GET", "POST"], maxAge: 86400 }));
 app.use("/api/*", bodyLimit({ maxSize: 16 * 1024 }));
@@ -83,11 +86,46 @@ setInterval(() => {
  * Readings are cached under a versioned key: bumping the version when the
  * prompt or the answer format changes stops old answers being served.
  */
-const READING_VERSION = "v2";
+const READING_VERSION = "v3";
 const readingKey = (chartKey: string) => `${READING_VERSION}:${chartKey}`;
 
-/** Concurrent requests for one chart share one model call. */
-const inFlight = new Map<string, Promise<unknown>>();
+/**
+ * One model call per chart: concurrent requests for the same chart join the
+ * job in flight, and a late joiner still gets the short answer if it is out.
+ */
+type Done = { id: string; payload: Record<string, unknown> };
+type Job = { done: Promise<Done>; partial: ShortAnswer | null; listeners: Set<(p: ShortAnswer) => void> };
+const inFlight = new Map<string, Job>();
+
+function startJob(key: string, chart: ReturnType<typeof cast>): Job {
+  const job: Job = { done: Promise.resolve() as unknown as Promise<Done>, partial: null, listeners: new Set() };
+  job.done = (async () => {
+    const r = await writeReading(chart, (p) => {
+      job.partial = p;
+      for (const l of job.listeners) l(p);
+    });
+    const answer = JSON.stringify({ verdict: r.verdict, summary: r.summary, segments: r.segments, grounded: r.grounded });
+    const ins = await pool.query<{ id: string }>(
+      `INSERT INTO readings (chart_key, request, answer, citations, chunk_ids, model, usage)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (chart_key) DO UPDATE SET chart_key = EXCLUDED.chart_key
+       RETURNING id`,
+      [key, chart.req, answer, JSON.stringify(r.sources), r.chunkIds, r.model, JSON.stringify(r.usage)],
+    );
+    return {
+      id: ins.rows[0].id,
+      payload: { verdict: r.verdict, summary: r.summary, segments: r.segments, grounded: r.grounded, sources: r.sources },
+    };
+  })().finally(() => inFlight.delete(key));
+  inFlight.set(key, job);
+  return job;
+}
+
+const errorOf = (e: unknown) => {
+  if (e instanceof ReadingRefused) return { status: 422 as const, error: "refused" };
+  console.error("reading failed", e);
+  return { status: 502 as const, error: "reading_failed" };
+};
 
 async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T> | Response> {
   let raw: unknown;
@@ -122,35 +160,74 @@ app.post("/api/reading", async (c) => {
 
   if (!env.ANTHROPIC_API_KEY) return c.json({ error: "llm_not_configured" }, 503);
 
-  let job = inFlight.get(key) as Promise<{ id: string; payload: object }> | undefined;
+  let job = inFlight.get(key);
   if (!job) {
     if (!allowReading(ipHash(c))) return c.json({ error: "rate_limited" }, 429);
-    job = (async () => {
-      const r = await writeReading(chart);
-      const answer = JSON.stringify({ verdict: r.verdict, summary: r.summary, segments: r.segments, grounded: r.grounded });
-      const ins = await pool.query<{ id: string }>(
-        `INSERT INTO readings (chart_key, request, answer, citations, chunk_ids, model, usage)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (chart_key) DO UPDATE SET chart_key = EXCLUDED.chart_key
-         RETURNING id`,
-        [key, chart.req, answer, JSON.stringify(r.sources), r.chunkIds, r.model, JSON.stringify(r.usage)],
-      );
-      return {
-        id: ins.rows[0].id,
-        payload: { verdict: r.verdict, summary: r.summary, segments: r.segments, grounded: r.grounded, sources: r.sources },
-      };
-    })().finally(() => inFlight.delete(key));
-    inFlight.set(key, job);
+    job = startJob(key, chart);
   }
 
   try {
-    const { id, payload } = await job;
+    const { id, payload } = await job.done;
     return c.json({ id, chartKey: chart.key, cached: false, ...payload });
   } catch (e) {
-    if (e instanceof ReadingRefused) return c.json({ error: "refused" }, 422);
-    console.error("reading failed", e);
-    return c.json({ error: "reading_failed" }, 502);
+    const { status, error } = errorOf(e);
+    return c.json({ error }, status);
   }
+});
+
+/**
+ * The same reading as a server-sent event stream: `partial` with the verdict
+ * and short answer as soon as they are written (a few seconds), then `done`
+ * with the whole reading, or `error`.
+ */
+app.post("/api/reading/stream", async (c) => {
+  const req = await body(c, chartRequest);
+  if (req instanceof Response) return req;
+  const chart = cast(req);
+  const key = readingKey(chart.key);
+
+  const cached = await pool.query("SELECT id, answer, citations FROM readings WHERE chart_key = $1", [key]);
+  let job: Job | undefined;
+  if (!cached.rows[0]) {
+    if (!env.ANTHROPIC_API_KEY) return c.json({ error: "llm_not_configured" }, 503);
+    job = inFlight.get(key);
+    if (!job) {
+      if (!allowReading(ipHash(c))) return c.json({ error: "rate_limited" }, 429);
+      job = startJob(key, chart);
+    }
+  }
+
+  // no-transform keeps the compress middleware from buffering the stream.
+  c.header("Cache-Control", "no-cache, no-transform");
+  c.header("X-Accel-Buffering", "no");
+  return streamSSE(c, async (stream) => {
+    const send = (event: string, data: unknown) => stream.writeSSE({ event, data: JSON.stringify(data) });
+    if (cached.rows[0]) {
+      const r = cached.rows[0];
+      await send("done", { id: r.id, chartKey: chart.key, cached: true, ...JSON.parse(r.answer), sources: r.citations });
+      return;
+    }
+    const j = job!;
+    let sentPartial = false;
+    const onPartial = (p: ShortAnswer) => {
+      if (sentPartial) return;
+      sentPartial = true;
+      void send("partial", p);
+    };
+    if (j.partial) onPartial(j.partial);
+    j.listeners.add(onPartial);
+    // Keep proxies from timing the connection out while the model writes.
+    const ping = setInterval(() => void stream.writeSSE({ event: "ping", data: "" }), 15_000);
+    try {
+      const { id, payload } = await j.done;
+      await send("done", { id, chartKey: chart.key, cached: false, ...payload });
+    } catch (e) {
+      await send("error", { error: errorOf(e).error });
+    } finally {
+      clearInterval(ping);
+      j.listeners.delete(onPartial);
+    }
+  });
 });
 
 const feedbackRequest = z

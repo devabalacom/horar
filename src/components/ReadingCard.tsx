@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_ENABLED, type ChartRequest, type Reading, type ReadingSegment, fetchReading } from "@/lib/api";
+import { API_ENABLED, type ChartRequest, type Reading, type ReadingSegment, type ShortAnswer, streamReading } from "@/lib/api";
 import type { Judgement } from "@/lib/judgement";
 
 const CAPTION: Record<string, string> = {
@@ -11,7 +11,11 @@ const CAPTION: Record<string, string> = {
   open: "По расчёту карты — нужен разбор",
 };
 
-type State = { s: "loading" } | { s: "done"; r: Reading } | { s: "error"; msg: string };
+type State =
+  | { s: "loading" }
+  | { s: "partial"; p: ShortAnswer }
+  | { s: "done"; r: Reading }
+  | { s: "error"; msg: string };
 
 function Text({ segments }: { segments: ReadingSegment[] }) {
   return (
@@ -47,7 +51,7 @@ export default function BookVerdict({ chart, judgement: j }: { chart: ChartReque
   useEffect(() => {
     if (!API_ENABLED) return;
     let live = true;
-    fetchReading(chart)
+    streamReading(chart, (p) => live && setState({ s: "partial", p }))
       .then((r) => live && setState({ s: "done", r }))
       .catch((e) => live && setState({ s: "error", msg: e instanceof Error ? e.message : "Не удалось получить толкование." }));
     return () => {
@@ -73,7 +77,7 @@ export default function BookVerdict({ chart, judgement: j }: { chart: ChartReque
       <div className="verdict verdict--loading" aria-busy="true" aria-live="polite">
         <span className="verdict__label">Толкование по книгам</span>
         <h3 className="verdict__title">Сверяем карту с книгами…</h3>
-        <p>Ищем в книгах по прашне отрывки о вашем вопросе и составляем ответ. Это занимает до минуты.</p>
+        <p>Ищем в книгах по прашне отрывки о вашем вопросе и составляем ответ — несколько секунд.</p>
         <span className="verdict__bar" aria-hidden="true" />
       </div>
     );
@@ -94,6 +98,23 @@ export default function BookVerdict({ chart, judgement: j }: { chart: ChartReque
           Попробовать ещё раз
         </button>
       </div>,
+    );
+  }
+
+  if (state.s === "partial") {
+    const p = state.p;
+    return (
+      <div className={`verdict verdict--${p.verdict?.tone ?? j.verdict.tone}`} aria-live="polite">
+        <span className="verdict__label">{p.verdict?.label ?? "Толкование по книгам"}</span>
+        <h3 className="verdict__title">{p.verdict?.title ?? j.verdict.title}</h3>
+        <Text segments={p.summary} />
+        <div className="reading-more">
+          <span className="btn btn-sm btn-outline is-busy" aria-busy="true">
+            Дописываем подробное толкование…
+          </span>
+          <span className="verdict__bar" aria-hidden="true" />
+        </div>
+      </div>
     );
   }
 

@@ -1353,6 +1353,11 @@ select.input {
   font-size: 1.25rem;
 }
 
+.btn.is-busy {
+  cursor: progress;
+  opacity: 0.8;
+}
+
 .verdict .reading__sources {
   color: var(--orange);
   opacity: 0.9;
@@ -1699,13 +1704,13 @@ select.input {
   font-family: "Horary Glyphs";
   src: url("/fonts/horary-glyphs.woff2") format("woff2");
   font-display: block;
-  unicode-range: U+2609, U+263D, U+263F, U+2640, U+2642-2644, U+2648-2653, U+FE0E;
+  unicode-range: U+2609-260B, U+263D, U+263F, U+2640, U+2642-2647, U+2648-2653, U+FE0E;
 }
 
 .wheel {
   display: block;
   width: 100%;
-  max-width: 520px;
+  max-width: 600px;
   margin: 0 auto;
   border-radius: 50%;
   background: var(--black);
@@ -1775,6 +1780,49 @@ select.input {
   stroke: var(--black);
   stroke-width: 4px;
   paint-order: stroke;
+}
+
+.wheel__scale {
+  stroke: rgba(184, 132, 76, 0.45);
+  stroke-width: 0.6;
+}
+
+.wheel__cuspdeg {
+  font-family: var(--font-involve), "Horary Glyphs", sans-serif;
+  font-size: 7.5px;
+  opacity: 0.6;
+}
+
+/* Elements of the signs: fire, earth, air, water — tints in the site palette. */
+.wheel .wheel__sign--0 {
+  fill: #d58a5e;
+}
+.wheel .wheel__sign--1 {
+  fill: #a7b07a;
+}
+.wheel .wheel__sign--2 {
+  fill: #d9c08a;
+}
+.wheel .wheel__sign--3 {
+  fill: #8fa7b3;
+}
+
+.wheel__aspect--faint {
+  opacity: 0.35;
+  stroke-dasharray: 3 3;
+}
+
+.wheel__planet.is-extra .wheel__glyph {
+  font-size: 15px;
+  opacity: 0.55;
+}
+
+.wheel__planet.is-extra .wheel__deg {
+  opacity: 0.45;
+}
+
+.wheel__planet.is-extra line {
+  opacity: 0.5;
 }
 
 .wheel__planet line {

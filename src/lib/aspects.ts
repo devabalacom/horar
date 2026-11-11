@@ -184,3 +184,54 @@ export function aspectGrid(date: Date): { a: PlanetId; b: PlanetId; aspect: Aspe
   }
   return out;
 }
+
+/** Lilly's full orbs: a planet keeps an aspect "in its rays" this far. */
+export const ORB: Record<PlanetId, number> = {
+  sun: 15, moon: 12, mercury: 7, venus: 7, mars: 7.5, jupiter: 9, saturn: 9,
+};
+
+export type Contact = { planet: PlanetId; aspect: AspectDef; date: Date };
+
+/**
+ * The last exact aspect `p` made with any other planet, walking back from
+ * `date` — the aspect it is now separating from. `among` limits the planets
+ * looked at. Null if none within the window (3 days for the Moon, 60 for
+ * the others).
+ */
+export function lastContact(p: PlanetId, date: Date, among: PlanetId[] = PLANET_IDS): Contact | null {
+  const others = among.filter((x) => x !== p);
+  const targets = others.flatMap((planet) =>
+    ASPECTS.flatMap((aspect) => targetsFor(aspect).map((target) => ({ planet, aspect, target }))),
+  );
+  const step = p === "moon" ? 1800_000 : DAY / 4;
+  const horizon = (p === "moon" ? 3 : 60) * DAY;
+  const lons = (d: Date) => Object.fromEntries(PLANET_IDS.map((x) => [x, longitude(x, d)])) as Record<PlanetId, number>;
+  let l = lons(date);
+  let prev = targets.map(({ planet, target }) => offsetOf(l[p], l[planet], target));
+  for (let t = date.getTime() - step; t > date.getTime() - horizon; t -= step) {
+    const d = new Date(t);
+    l = lons(d);
+    const cur = targets.map(({ planet, target }) => offsetOf(l[p], l[planet], target));
+    for (let i = 0; i < targets.length; i++) {
+      if (Math.sign(cur[i]) !== Math.sign(prev[i]) && Math.abs(cur[i]) < 20 && Math.abs(prev[i]) < 20) {
+        return { planet: targets[i].planet, aspect: targets[i].aspect, date: d };
+      }
+    }
+    prev = cur;
+  }
+  return null;
+}
+
+/** Antiscion: the mirror point across the Cancer–Capricorn axis. */
+export const antiscion = (lon: number) => norm(180 - lon);
+
+export type Antiscion = { kind: "antiscion" | "contra"; orb: number };
+
+/** Whether a stands on b's antiscion (hidden conjunction) or contra-antiscion. */
+export function antiscionContact(lonA: number, lonB: number, orb = 1.5): Antiscion | null {
+  const anti = Math.abs(delta(antiscion(lonA), lonB));
+  if (anti <= orb) return { kind: "antiscion", orb: anti };
+  const contra = Math.abs(delta(norm(antiscion(lonA) + 180), lonB));
+  if (contra <= orb) return { kind: "contra", orb: contra };
+  return null;
+}

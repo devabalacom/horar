@@ -25,6 +25,17 @@ in front of it.
 Without books loaded the reading still works and says that the books gave no
 direct quotes.
 
+## Speed
+
+A reading is streamed (`POST /api/reading/stream`, server-sent events): the
+verdict and short answer arrive as `partial` within ~6 s, the whole reading
+as `done` within ~15 s. Book search takes ~0.1 s; the time is the model.
+Knobs in `.env`: `CLAUDE_SPEED=fast` (default: Opus fast mode, 2x price,
+falls back to standard on its rate limit), `CLAUDE_EFFORT=low` (default),
+`CLAUDE_MODEL` / `CLAUDE_THINKING=between_tools` to run Sonnet 5.5 without
+thinking. `npx tsx --env-file=.env scripts/time-reading.ts` times one reading
+without touching the cache.
+
 ## Endpoints
 
 | | |

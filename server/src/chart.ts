@@ -150,6 +150,17 @@ export function dossier(c: Cast): string {
     );
   }
 
+  for (const h of j.helpers) {
+    lines.push(
+      h.kind === "translation"
+        ? `Передача света: ${name(h.planet)} отходит от ${PLANETS[h.from].gen} и сходится (${h.aspect.name}) с ${PLANETS[h.to].gen}${h.received ? "; посредник в достоинствах обоих сигнификаторов" : ""}.`
+        : `Собирание света: ${name(h.from)} и ${name(h.to)} сходятся с ${PLANETS[h.planet].gen}, который принимает обоих.`,
+    );
+  }
+  if (j.antiscia) {
+    lines.push(`${j.antiscia.kind === "antiscion" ? "Антисцион" : "Контр-антисцион"} ${name(j.antiscia.a)} — ${name(j.antiscia.b)}, орбис ${j.antiscia.orb.toFixed(2)}°.`);
+  }
+
   if (j.main) {
     const m = j.main;
     const now = m.now

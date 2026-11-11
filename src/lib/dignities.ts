@@ -11,7 +11,7 @@ const EXALTATION: Partial<Record<PlanetId, number>> = {
 };
 
 /** Fire, earth, air, water: [day, night]. */
-const TRIPLICITY: [PlanetId, PlanetId][] = [
+export const TRIPLICITY: [PlanetId, PlanetId][] = [
   ["sun", "jupiter"],
   ["venus", "moon"],
   ["saturn", "mercury"],

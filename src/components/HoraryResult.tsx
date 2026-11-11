@@ -41,8 +41,9 @@ export default function HoraryResult({ built, mainSite }: { built: Built; mainSi
       <article className="r-card">
         <h3 className="r-card__title">Карта хорара</h3>
         <p className="r-card__lead">
-          Дома по Региомонтану на момент вопроса. Подсвечены сигнификаторы; линии в центре — аспекты в орбисе:
-          зелёные гармоничные, терракотовые напряжённые.
+          Дома по Региомонтану на момент вопроса, у куспидов — их градусы. Подсвечены сигнификаторы; линии в
+          центре — аспекты в орбисе: зелёные гармоничные, терракотовые напряжённые. Уран, Нептун, Плутон и узлы
+          Луны показаны бледнее и пунктиром — для контекста: традиционный хорар по ним не судит.
         </p>
         <HoraryWheel chart={chart} highlight={highlight} grid={j.grid} />
       </article>
@@ -219,6 +220,40 @@ export default function HoraryResult({ built, mainSite }: { built: Built; mainSi
                 }. Это сценарий, по которому пойдёт дело.`
               : "до выхода из знака Луна не сделает точных аспектов — она без курса."}
           </p>
+        </article>
+      )}
+
+      {/* ---------- helpers ---------- */}
+      {(j.helpers.length > 0 || j.antiscia) && (
+        <article className="r-card">
+          <h3 className="r-card__title">Посредники и скрытые связи</h3>
+          <p className="r-card__lead">
+            Когда сигнификаторы не сходятся сами, дело может довести третья планета: перенести свет от одного к
+            другому или собрать обоих к себе. Антисции показывают скрытую связь по зеркальным градусам.
+          </p>
+          <ul className="checks">
+            {j.helpers.map((h) => (
+              <li key={`${h.kind}-${h.planet}`} className="check-item check-item--ok">
+                <strong>{h.kind === "translation" ? "Передача света" : "Собирание света"}</strong>
+                <p>
+                  {h.kind === "translation"
+                    ? `${PLANETS[h.planet].name} отходит от планеты ${PLANETS[h.from].gen} и идёт к аспекту «${h.aspect.name}» с планетой ${PLANETS[h.to].gen}: дело складывается через посредника.`
+                    : `${PLANETS[h.from].name} и ${PLANETS[h.to].name} приходят к аспекту с планетой ${PLANETS[h.planet].gen}, и она принимает обоих: дело решает третья, более весомая сторона.`}
+                  {h.received && h.kind === "translation" && " Посредник стоит в достоинствах обеих сторон — это доводит дело надёжнее."}
+                </p>
+              </li>
+            ))}
+            {j.antiscia && (
+              <li className={`check-item check-item--${j.antiscia.kind === "antiscion" ? "ok" : "warn"}`}>
+                <strong>{j.antiscia.kind === "antiscion" ? "Антисцион" : "Контр-антисцион"}</strong>
+                <p>
+                  {PLANETS[j.antiscia.a].name} и {PLANETS[j.antiscia.b].name} связаны по зеркальным градусам (орбис{" "}
+                  {j.antiscia.orb.toFixed(2).replace(".", ",")}°):{" "}
+                  {j.antiscia.kind === "antiscion" ? "скрытое соединение, тайная поддержка." : "скрытая помеха, тайное противодействие."}
+                </p>
+              </li>
+            )}
+          </ul>
         </article>
       )}
 

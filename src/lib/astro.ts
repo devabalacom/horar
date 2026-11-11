@@ -67,6 +67,36 @@ export type PlanetPosition = {
   readHouse: number;
 };
 
+/**
+ * Bodies drawn on the wheel for context only: the outer planets and the
+ * Moon's nodes. Traditional horary does not judge by them.
+ */
+export type ExtraId = "uranus" | "neptune" | "pluto" | "node" | "southNode";
+export const EXTRAS: Record<ExtraId, { name: string; glyph: string }> = {
+  uranus: { name: "Уран", glyph: "♅" },
+  neptune: { name: "Нептун", glyph: "♆" },
+  pluto: { name: "Плутон", glyph: "♇" },
+  node: { name: "Северный узел", glyph: "☊" },
+  southNode: { name: "Южный узел", glyph: "☋" },
+};
+export type ExtraPosition = { id: ExtraId; lon: number; speed: number };
+
+/** Mean lunar node (Meeus, ch. 47). */
+function meanNode(date: Date): number {
+  const T = (date.getTime() / 86_400_000 + 2440587.5 - 2451545.0) / 36525;
+  return norm(125.0445479 - 1934.1362891 * T + 0.0020754 * T * T + (T * T * T) / 467441);
+}
+
+function extrasAt(date: Date): ExtraPosition[] {
+  const outer = ([["uranus", Body.Uranus], ["neptune", Body.Neptune], ["pluto", Body.Pluto]] as const).map(([id, body]) => {
+    const at = (d: Date) => Ecliptic(GeoVector(body, d, true)).elon;
+    const half = 12 * 3600_000;
+    return { id, lon: at(date), speed: delta(at(new Date(date.getTime() - half)), at(new Date(date.getTime() + half))) };
+  });
+  const node = meanNode(date);
+  return [...outer, { id: "node", lon: node, speed: -0.053 }, { id: "southNode", lon: norm(node + 180), speed: -0.053 }];
+}
+
 export type Chart = {
   date: Date;
   lat: number;
@@ -77,6 +107,8 @@ export type Chart = {
   /** Twelve cusps, house I first. */
   cusps: number[];
   planets: PlanetPosition[];
+  /** Outer planets and nodes, for the wheel only. */
+  extras: ExtraPosition[];
   isDay: boolean;
   hourRuler: PlanetId | null;
 };
@@ -175,6 +207,7 @@ export function castChart(date: Date, lat: number, lng: number, tz: string): Cha
     mc,
     cusps,
     planets,
+    extras: extrasAt(date),
     isDay: sun.house >= 7,
     hourRuler: planetaryHour(date, lat, lng, tz),
   };
