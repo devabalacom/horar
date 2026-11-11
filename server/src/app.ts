@@ -79,6 +79,13 @@ setInterval(() => {
   for (const [k, v] of spent) if (v.every((t) => now - t >= 3600_000)) spent.delete(k);
 }, 600_000).unref();
 
+/**
+ * Readings are cached under a versioned key: bumping the version when the
+ * prompt or the answer format changes stops old answers being served.
+ */
+const READING_VERSION = "v2";
+const readingKey = (chartKey: string) => `${READING_VERSION}:${chartKey}`;
+
 /** Concurrent requests for one chart share one model call. */
 const inFlight = new Map<string, Promise<unknown>>();
 
@@ -105,8 +112,9 @@ app.post("/api/reading", async (c) => {
   const req = await body(c, chartRequest);
   if (req instanceof Response) return req;
   const chart = cast(req);
+  const key = readingKey(chart.key);
 
-  const cached = await pool.query("SELECT id, answer, citations FROM readings WHERE chart_key = $1", [chart.key]);
+  const cached = await pool.query("SELECT id, answer, citations FROM readings WHERE chart_key = $1", [key]);
   if (cached.rows[0]) {
     const r = cached.rows[0];
     return c.json({ id: r.id, chartKey: chart.key, cached: true, ...JSON.parse(r.answer), sources: r.citations });
@@ -114,22 +122,25 @@ app.post("/api/reading", async (c) => {
 
   if (!env.ANTHROPIC_API_KEY) return c.json({ error: "llm_not_configured" }, 503);
 
-  let job = inFlight.get(chart.key) as Promise<{ id: string; payload: object }> | undefined;
+  let job = inFlight.get(key) as Promise<{ id: string; payload: object }> | undefined;
   if (!job) {
     if (!allowReading(ipHash(c))) return c.json({ error: "rate_limited" }, 429);
     job = (async () => {
       const r = await writeReading(chart);
-      const answer = JSON.stringify({ segments: r.segments, grounded: r.grounded });
+      const answer = JSON.stringify({ verdict: r.verdict, summary: r.summary, segments: r.segments, grounded: r.grounded });
       const ins = await pool.query<{ id: string }>(
         `INSERT INTO readings (chart_key, request, answer, citations, chunk_ids, model, usage)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (chart_key) DO UPDATE SET chart_key = EXCLUDED.chart_key
          RETURNING id`,
-        [chart.key, chart.req, answer, JSON.stringify(r.sources), r.chunkIds, r.model, JSON.stringify(r.usage)],
+        [key, chart.req, answer, JSON.stringify(r.sources), r.chunkIds, r.model, JSON.stringify(r.usage)],
       );
-      return { id: ins.rows[0].id, payload: { segments: r.segments, grounded: r.grounded, sources: r.sources } };
-    })().finally(() => inFlight.delete(chart.key));
-    inFlight.set(chart.key, job);
+      return {
+        id: ins.rows[0].id,
+        payload: { verdict: r.verdict, summary: r.summary, segments: r.segments, grounded: r.grounded, sources: r.sources },
+      };
+    })().finally(() => inFlight.delete(key));
+    inFlight.set(key, job);
   }
 
   try {
@@ -154,7 +165,7 @@ app.post("/api/feedback", async (c) => {
   const b = await body(c, feedbackRequest);
   if (b instanceof Response) return b;
   const chart = cast(b.chart);
-  const reading = await pool.query<{ id: string }>("SELECT id FROM readings WHERE chart_key = $1", [chart.key]);
+  const reading = await pool.query<{ id: string }>("SELECT id FROM readings WHERE chart_key = $1", [readingKey(chart.key)]);
   await pool.query(
     `INSERT INTO feedback (chart_key, reading_id, vote, verdict, topic, house, comment, ip_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

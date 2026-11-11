@@ -26,9 +26,15 @@ export type ChartRequest = {
 };
 
 export type ReadingSource = { n: number; book: string; author: string; chapter: string; quote: string };
+export type ReadingSegment = { text: string; sources: number[] };
 export type Reading = {
   id: string;
-  segments: { text: string; sources: number[] }[];
+  /** The verdict the books lead to; null when the model ignored the format. */
+  verdict: { tone: "yes" | "hard" | "no" | "open"; label: string; title: string } | null;
+  /** Short answer for the result block. */
+  summary: ReadingSegment[];
+  /** Detailed reading. */
+  segments: ReadingSegment[];
   sources: ReadingSource[];
   grounded: boolean;
 };

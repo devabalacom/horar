@@ -48,6 +48,9 @@ export type Built = {
   request: ChartRequest;
 };
 
+/** The free-text question field is a v2 feature; off until then. */
+const QUESTION_FIELD = false;
+
 export default function HoraryApp({ mainSite }: { mainSite: string }) {
   const [openCat, setOpenCat] = useState<string>(CATEGORIES[0].id);
   const [selected, setSelected] = useState<{ category: string; topic: string } | null>(null);
@@ -275,6 +278,8 @@ export default function HoraryApp({ mainSite }: { mainSite: string }) {
             </div>
           </div>
 
+          {/* v2: «Ваш вопрос своими словами» — hidden until v2 (see docs/ROADMAP.md). */}
+          {QUESTION_FIELD && (
           <div className="field">
             <label htmlFor="question" className="field__label">
               Ваш вопрос своими словами <span className="field__optional">— необязательно</span>
@@ -290,6 +295,7 @@ export default function HoraryApp({ mainSite }: { mainSite: string }) {
             />
             <span className="field__hint">Пригодится для толкования по книгам — на вычисление карты не влияет.</span>
           </div>
+          )}
         </section>
 
         <section className="step-card" id="step-moment" aria-labelledby="step-moment-title">

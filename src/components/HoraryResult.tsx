@@ -1,32 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import HoraryWheel from "@/components/HoraryWheel";
-import ReadingCard from "@/components/ReadingCard";
-import { API_ENABLED, sendFeedback } from "@/lib/api";
+import BookVerdict from "@/components/ReadingCard";
 import type { Built } from "@/components/HoraryApp";
 import { PLANETS, ROMAN, formatPosition } from "@/lib/astro";
 import { describeState, viaList } from "@/lib/dignities";
 
 const pad = (s: string) => s.padStart(2, "0");
 
-const CAPTION: Record<string, string> = {
-  yes: "Похоже на «да»",
-  hard: "С оговоркой",
-  no: "Похоже на «нет»",
-  open: "Нужен разбор",
-};
-
 export default function HoraryResult({ built, mainSite }: { built: Built; mainSite: string }) {
   const { judgement: j, title, place, question, wall, request } = built;
   const { chart } = j;
-  const [vote, setVote] = useState<"up" | "down" | null>(null);
-  const castVote = (v: "up" | "down") => {
-    setVote(v);
-    // A lost vote is not worth bothering the visitor about.
-    if (API_ENABLED) sendFeedback(request, v).catch(() => {});
-  };
-
   const dayMonth = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: chart.tz });
   const hours = (d: Date) => (d.getTime() - chart.date.getTime()) / 3600_000;
 
@@ -50,37 +34,8 @@ export default function HoraryResult({ built, mainSite }: { built: Built; mainSi
         {question && <p className="r-question">{question}</p>}
         <p className="r-meta">{meta.join(" · ")}</p>
 
-        <div className={`verdict verdict--${j.verdict.tone}`}>
-          <span className="verdict__label">{CAPTION[j.verdict.tone]}</span>
-          <h3 className="verdict__title">{j.verdict.title}</h3>
-          <p>{j.verdict.text}</p>
-          <p className="verdict__note">
-            Это автоматическая сводка по главному аспекту и проверкам перед суждением. Рецепции, состояние
-            планет и Луну смотрите в карточках ниже — читайте вывод вместе с ними.
-          </p>
-        </div>
-
-        <div className="vote" aria-live="polite">
-          {vote ? (
-            <p>Спасибо! Ваш отзыв поможет сделать ответы точнее.</p>
-          ) : (
-            <>
-              <p>Похоже на правду?</p>
-              <div className="vote__buttons">
-                <button type="button" className="btn btn-sm btn-outline" onClick={() => castVote("up")}>
-                  Похоже
-                </button>
-                <button type="button" className="btn btn-sm btn-outline" onClick={() => castVote("down")}>
-                  Мимо
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        <BookVerdict key={JSON.stringify(request)} chart={request} judgement={j} />
       </article>
-
-      {/* ---------- reading from the books ---------- */}
-      <ReadingCard key={JSON.stringify(request)} chart={request} />
 
       {/* ---------- wheel ---------- */}
       <article className="r-card">

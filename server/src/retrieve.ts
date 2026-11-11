@@ -3,9 +3,9 @@ import { pool } from "./db.js";
 
 export type Passage = { id: number; bookId: number; book: string; author: string; chapter: string; text: string };
 
-/** About 12k tokens of book text per reading. */
-const CHAR_BUDGET = 40_000;
-const PER_FACET = 4;
+/** About 18k tokens of book text per reading. */
+const CHAR_BUDGET = 60_000;
+const PER_FACET = 5;
 
 /**
  * Full-text search over the books, one query per facet. Only the books of
@@ -37,7 +37,7 @@ export async function retrieve(facets: string[], area: Area): Promise<Passage[]>
      FROM ranked WHERE rn <= $2
      GROUP BY id, own
      ORDER BY own DESC, hits DESC, rank DESC
-     LIMIT 40`,
+     LIMIT 60`,
     [facets, PER_FACET, area],
   );
   if (rows.length === 0) return [];

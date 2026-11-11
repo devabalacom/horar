@@ -199,6 +199,8 @@ function anyWord(text: string): string | null {
  * them. The search is about the matter asked — the topic, its house, the
  * asker's own words — and the planets that signify it.
  */
+const HOUSE_ORDINALS = ["", "первый", "второй", "третий", "четвёртый", "пятый", "шестой", "седьмой", "восьмой", "девятый", "десятый", "одиннадцатый", "двенадцатый"];
+
 export function facets(c: Cast): string[] {
   const { judgement: j } = c;
   const out = new Set<string>();
@@ -210,5 +212,10 @@ export function facets(c: Cast): string[] {
   for (const s of j.significators) out.add(name(s.planet));
   if (j.natural) out.add(name(j.natural));
   if (j.main?.timing) out.add("сроки or время or когда");
+  // How the Prashna books phrase the rules a horary verdict rests on.
+  out.add(`${j.house} дом or ${HOUSE_ORDINALS[j.house]} дом`);
+  out.add("итхасала or ишрафа or сходящийся аспект");
+  out.add("хозяин лагны or управитель лагны or хозяин дома вопроса");
+  out.add("Луна вопрос");
   return [...out].map((s) => s.slice(0, 300));
 }

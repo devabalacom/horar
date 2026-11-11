@@ -15,19 +15,32 @@ const SYSTEM = `Ты — астролог классической хорарн�
 - Ссылаясь на книгу, называй это взглядом индийской традиции («в индийской астрологии вопроса…», «Толмачёв пишет…»), чтобы не смешивать системы.
 - Каждое утверждение из книг подкрепляй цитатой — система цитирования покажет человеку, откуда взято. Не приписывай книгам того, чего в отрывках нет. Если отрывков нет или они не касаются вопроса, толкуй по общим правилам хорарной традиции и прямо скажи, что в книгах прямого ответа не нашлось.
 
+Главное: вывод и толкование строятся по книгам. Сначала найди в отрывках, что книги говорят о таком вопросе (о доме и теме, о сигнификаторах, о Луне, о благоприятных и неблагоприятных планетах в доме вопроса, о сходящемся аспекте управителей — в Таджике это итхасала, ишрафа — расходящийся), и только потом приложи это к фактам карты. Принципы, общие для обеих традиций (управитель I дома и управитель дома вопроса сходятся аспектом — да; расходятся или разделены — нет; Луна как сопутствующий показатель; благотворные и вредители в доме вопроса; натуральный показатель темы), применяй к карте прямо, со ссылкой на книгу. Автоматический вердикт программы — подсказка, а не решение: если книги ведут к другому выводу, следуй книгам и коротко объясни почему.
+
+Формат ответа — строго четыре части с метками в начале строки, без других заголовков:
+ВЕРДИКТ: одно из — да | скорее да | с оговоркой | скорее нет | нет | неясно
+ЗАГОЛОВОК: формула ответа в 3–8 словах, без кавычек (например: Скорее нет — управители не сходятся)
+ИТОГ:
+Прямой ответ на вопрос в 3–5 предложениях: что показывает карта и на какое правило из книг это опирается (с цитатой).
+РАЗБОР:
+Подробное толкование, 600–900 слов, несколько абзацев без списков и заголовков: что книги говорят о таком вопросе и доме; сигнификаторы и их состояние; рецепция; главный аспект и его ход; Луна; препятствия к суждению, если есть; сроки, если есть (как ориентир, а не дата); практический совет. Почти каждый абзац опирай на цитату из книг.
+
 Как писать:
 - По-русски, обращаясь к спрашивающему на «вы», спокойно и без мистического пафоса.
-- Начни с прямого ответа в одном-двух предложениях: что показывает карта по вопросу.
-- Затем разбор: сигнификаторы и их состояние, рецепция, главный аспект и его ход, Луна. Объясняй, что это значит для дела, а не пересказывай таблицу.
-- Если в карте есть сроки — скажи, как их читать, и что это ориентир, а не дата.
-- Если карта не радикальна или есть препятствия к суждению — скажи об этом в начале и смягчи вывод.
-- 250–450 слов, несколько абзацев, без маркированных списков и без заголовков.
+- Объясняй, что это значит для дела, а не пересказывай таблицу.
+- Если карта не радикальна или есть препятствия к суждению — скажи об этом в ИТОГЕ и смягчи вывод.
 - Не давай медицинских, юридических и финансовых предписаний; в таких темах напомни, что решение и профессиональная помощь — за человеком.
 - Не предсказывай смерть, тяжёлую болезнь или беду как неизбежность.`;
 
 export type Segment = { text: string; sources: number[] };
 export type Source = { n: number; book: string; author: string; chapter: string; quote: string };
+export type Tone = "yes" | "hard" | "no" | "open";
+export type Verdict = { tone: Tone; label: string; title: string };
 export type Reading = {
+  verdict: Verdict | null;
+  /** ИТОГ: the short answer shown inside the result block. */
+  summary: Segment[];
+  /** РАЗБОР: the detailed reading under it. */
   segments: Segment[];
   sources: Source[];
   grounded: boolean;
@@ -134,13 +147,63 @@ export async function writeReading(c: Cast): Promise<Reading> {
   }
 
   if (!segments.some((s) => s.text.trim())) throw new Error(`empty reading (stop_reason=${msg.stop_reason})`);
+  const parts = splitSections(segments);
 
   return {
-    segments,
+    ...parts,
     sources,
     grounded: sources.length > 0,
     model: msg.model,
     usage: msg.usage,
     chunkIds: passages.map((p) => p.id),
+  };
+}
+
+const TONES: Record<string, Tone> = {
+  "да": "yes", "скорее да": "yes", "с оговоркой": "hard", "скорее нет": "no", "нет": "no", "неясно": "open",
+};
+const LABELS: Record<string, string> = {
+  "да": "По книгам — «да»", "скорее да": "По книгам — скорее «да»", "с оговоркой": "По книгам — с оговоркой",
+  "скорее нет": "По книгам — скорее «нет»", "нет": "По книгам — «нет»", "неясно": "По книгам — нужен разбор",
+};
+
+/** Cuts segments[] at character offsets [from, to) of their concatenation. */
+function slice(segments: Segment[], from: number, to: number): Segment[] {
+  const out: Segment[] = [];
+  let pos = 0;
+  for (const seg of segments) {
+    const a = Math.max(from, pos), b = Math.min(to, pos + seg.text.length);
+    if (a < b) out.push({ text: seg.text.slice(a - pos, b - pos), sources: seg.sources });
+    pos += seg.text.length;
+  }
+  // Trim the outer whitespace left by the markers.
+  if (out.length) out[0] = { ...out[0], text: out[0].text.replace(/^\s+/, "") };
+  if (out.length) out[out.length - 1] = { ...out[out.length - 1], text: out[out.length - 1].text.replace(/\s+$/, "") };
+  return out.filter((s) => s.text || s.sources.length);
+}
+
+/**
+ * The model answers in four marked parts (ВЕРДИКТ, ЗАГОЛОВОК, ИТОГ, РАЗБОР).
+ * Citations live on the segments, so the parts are cut out of the segment
+ * list by offset rather than re-parsed from plain text. A reply that ignores
+ * the format is kept whole as the detailed reading.
+ */
+export function splitSections(segments: Segment[]): Pick<Reading, "verdict" | "summary" | "segments"> {
+  const full = segments.map((s) => s.text).join("");
+  const v = full.match(/^[ \t*]*ВЕРДИКТ[ \t*]*:[ \t*]*(.+)$/im);
+  const t = full.match(/^[ \t*]*ЗАГОЛОВОК[ \t*]*:[ \t*]*(.+)$/im);
+  const s = full.match(/^[ \t*]*ИТОГ[ \t*]*:?[ \t*]*$/im) ?? full.match(/^[ \t*]*ИТОГ[ \t*]*:[ \t*]*/im);
+  const r = full.match(/^[ \t*]*РАЗБОР[ \t*]*:?[ \t*]*$/im) ?? full.match(/^[ \t*]*РАЗБОР[ \t*]*:[ \t*]*/im);
+  if (!s || !r || s.index === undefined || r.index === undefined || r.index < s.index) {
+    return { verdict: null, summary: [], segments };
+  }
+  const key = (v?.[1] ?? "").toLowerCase().replace(/[«»"*.]/g, "").trim();
+  const found = Object.keys(TONES).sort((a, b) => b.length - a.length).find((k) => key.startsWith(k));
+  const verdict: Verdict | null =
+    found && t ? { tone: TONES[found], label: LABELS[found], title: t[1].replace(/[*«»"]/g, "").trim() } : null;
+  return {
+    verdict,
+    summary: slice(segments, s.index + s[0].length, r.index),
+    segments: slice(segments, r.index + r[0].length, full.length),
   };
 }
