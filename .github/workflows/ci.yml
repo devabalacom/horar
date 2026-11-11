@@ -1,0 +1,51 @@
+# Checks every push and pull request. The VPS deploys a commit on main only
+# after this workflow has passed for it (deploy/autodeploy.sh).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install (site)
+        run: npm ci
+      - name: Install (API)
+        run: npm ci
+        working-directory: server
+
+      - name: Lint
+        run: npx eslint src
+      - name: Typecheck (site)
+        run: npx tsc --noEmit
+      - name: Typecheck (API)
+        run: npm run typecheck
+        working-directory: server
+
+      - name: Build site (static export, as on the VPS)
+        run: npx next build
+        env:
+          SELF_HOST: "true"
+          NEXT_PUBLIC_API_URL: /
+      - name: Build API
+        run: npm run build
+        working-directory: server

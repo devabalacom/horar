@@ -1,0 +1,10 @@
+[Unit]
+Description=horar: check main for a new commit every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

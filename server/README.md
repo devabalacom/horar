@@ -87,7 +87,18 @@ data in `data/`, password in its `.env`). `.env` here sets `HOST=0.0.0.0`,
 `PORT=8080`, `STATIC_DIR=../out`, `TRUST_PROXY=false`, `READINGS_PER_DAY`.
 
 - install as services (once): `bash deploy/install.sh`
-- after a code change: `bash deploy/update.sh`
+- after a code change: push to `main` — it deploys itself (below); by
+  hand: `bash deploy/update.sh`
+- logs: `journalctl --user -u horar-autodeploy` for deploys
+
+**CI/CD.** `.github/workflows/ci.yml` lints, typechecks and builds every
+push. On the VPS `horar-autodeploy.timer` runs `deploy/autodeploy.sh` every
+minute: when `origin/main` has a new commit whose CI run succeeded, it
+fast-forwards `~/horar`, runs `npm ci` if a lockfile changed and then
+`deploy/update.sh`. It is pull-based, so GitHub holds no key to this
+server. The checkout `~/horar` must stay on `main` with no uncommitted
+changes, or the deploy is skipped and says why in the log; do feature work
+in a branch of another clone or a `git worktree`.
 - logs: `journalctl --user -u horar -f`
 - backups: `~/horar-data/backups/horar-YYYY-MM-DD.json.gz` (readings and
   votes, last 14 days; books are re-made with the ingest commands above)

@@ -1,0 +1,10 @@
+[Unit]
+Description=horar: deploy new commits on main once CI has passed
+After=network-online.target horar.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/horar
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/bash deploy/autodeploy.sh
+TimeoutStartSec=20min

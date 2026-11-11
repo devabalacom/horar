@@ -15,7 +15,7 @@ cp "$here"/systemd/horar*.service "$here"/systemd/horar*.timer "$dest"/
 # Keep user services running after logout and across reboots.
 loginctl enable-linger "$USER" || echo "!! enable-linger failed: ask an admin to run: sudo loginctl enable-linger $USER"
 systemctl --user daemon-reload
-systemctl --user enable --now horar-pg.service horar.service horar-backup.timer
+systemctl --user enable --now horar-pg.service horar.service horar-backup.timer horar-autodeploy.timer
 sleep 3
 systemctl --user --no-pager status horar-pg horar | grep -E "●|Active:"
 curl -fsS http://127.0.0.1:8080/api/health && echo
