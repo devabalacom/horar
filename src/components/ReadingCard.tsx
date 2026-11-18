@@ -23,13 +23,6 @@ function Text({ segments }: { segments: ReadingSegment[] }) {
       {segments.map((seg, i) => (
         <span key={i}>
           {seg.text}
-          {seg.sources.map((n) => (
-            <sup key={n}>
-              <a href={`#src-${n}`} className="reading__ref">
-                {n}
-              </a>
-            </sup>
-          ))}
         </span>
       ))}
     </div>
@@ -40,8 +33,8 @@ function Text({ segments }: { segments: ReadingSegment[] }) {
  * The verdict of the result block. It comes from the books: as soon as the
  * chart is built the API casts it again, finds the passages that speak to it
  * and the model answers in three parts — verdict, short answer, detailed
- * reading. The short answer sits in the block; the detailed reading with its
- * quotes opens under it. The program's own verdict is shown only when the
+ * reading. The short answer sits in the block; the detailed description opens
+ * under it; book citations stay server-side and are not shown. The program's own verdict is shown only when the
  * book reading cannot be had.
  */
 export default function BookVerdict({ chart, judgement: j }: { chart: ChartRequest; judgement: Judgement }) {
@@ -110,7 +103,7 @@ export default function BookVerdict({ chart, judgement: j }: { chart: ChartReque
         <Text segments={p.summary} />
         <div className="reading-more">
           <span className="btn btn-sm btn-outline is-busy" aria-busy="true">
-            Дописываем подробное толкование…
+            Дописываем подробное описание…
           </span>
           <span className="verdict__bar" aria-hidden="true" />
         </div>
@@ -120,45 +113,17 @@ export default function BookVerdict({ chart, judgement: j }: { chart: ChartReque
 
   const r = state.r;
   const tone = r.verdict?.tone ?? j.verdict.tone;
-  // A footnote in the short answer points into the detailed reading: open it first.
-  const openOnRef = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest(".reading__ref")) {
-      const d = e.currentTarget.querySelector("details");
-      if (d) d.open = true;
-    }
-  };
   return (
-    <div className={`verdict verdict--${tone}`} onClick={openOnRef}>
+    <div className={`verdict verdict--${tone}`}>
       <span className="verdict__label">{r.verdict?.label ?? "Толкование по книгам"}</span>
       <h3 className="verdict__title">{r.verdict?.title ?? j.verdict.title}</h3>
       {r.summary?.length ? <Text segments={r.summary} /> : null}
 
       <details className="reading-more" open={!r.summary?.length}>
         <summary>
-          <span className="btn btn-sm">Подробное толкование по книгам</span>
+          <span className="btn btn-sm">Подробное описание</span>
         </summary>
         <Text segments={r.segments} />
-        {r.sources.length > 0 ? (
-          <>
-            <h4 className="reading-more__title">Цитаты из книг</h4>
-            <ol className="reading__sources">
-              {r.sources.map((s) => (
-                <li key={s.n} id={`src-${s.n}`}>
-                  <blockquote>«{s.quote}»</blockquote>
-                  <cite>
-                    {s.author ? `${s.author}. ` : ""}
-                    {s.book}
-                    {s.chapter ? ` — ${s.chapter}` : ""}
-                  </cite>
-                </li>
-              ))}
-            </ol>
-          </>
-        ) : (
-          <p className="verdict__note">
-            В загруженных книгах прямых цитат к этой карте не нашлось — толкование дано по общим правилам традиции.
-          </p>
-        )}
       </details>
     </div>
   );

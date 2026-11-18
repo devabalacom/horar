@@ -120,7 +120,7 @@ export function dossier(c: Cast): string {
     `Асцендент ${formatPosition(chart.asc)}, MC ${formatPosition(chart.mc)}; карта ${chart.isDay ? "дневная" : "ночная"}; Луна ${j.moonWaxing ? "растущая" : "убывающая"}${chart.hourRuler ? `; управитель часа — ${name(chart.hourRuler)}` : ""}.`,
   );
   lines.push("");
-  lines.push(`Автоматический вердикт: ${j.verdict.title}. ${j.verdict.text}`);
+  lines.push(`Предварительный вердикт: ${j.verdict.title}. ${j.verdict.text}`);
   lines.push(`Карта ${j.radical ? "радикальна" : "с оговорками"}.`);
   for (const k of j.considerations) lines.push(`- Проверка (${k.level}): ${k.title}. ${k.text}`);
 

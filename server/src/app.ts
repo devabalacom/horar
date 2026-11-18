@@ -86,7 +86,7 @@ setInterval(() => {
  * Readings are cached under a versioned key: bumping the version when the
  * prompt or the answer format changes stops old answers being served.
  */
-const READING_VERSION = "v3";
+const READING_VERSION = "v4";
 const readingKey = (chartKey: string) => `${READING_VERSION}:${chartKey}`;
 
 /**
